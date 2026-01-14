@@ -1440,8 +1440,8 @@ class FPQuantConfig(QuantizationConfigMixin):
         if self.backward_dtype != "bf16" and self.forward_dtype != "mxfp4":
             raise ValueError("Only 'mxfp4' forward is compatible with non-bf16 backwards for now.")
 
-        if self.transform_init not in ["hadamard", "identity", "gsr"]:
-            raise ValueError("Only 'hadamard', 'identity' and 'gsr' are supported for transform_init.")
+        if self.transform_init not in ["hadamard", "identity", "gsr","wush"]:
+            raise ValueError("Only 'hadamard', 'identity','wush' and 'gsr' are supported for transform_init.")
 
         if self.modules_to_not_convert is None:
             self.modules_to_not_convert = ["lm_head"]
