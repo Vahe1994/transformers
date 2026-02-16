@@ -17,6 +17,7 @@ import gc
 import json
 import math
 import os
+from typing import Optional
 
 import regex as re
 import torch
@@ -89,7 +90,7 @@ ORIGINAL_TO_CONVERTED_KEY_MAPPING = {
 CONTEXT_LENGTH = 131072
 
 
-def convert_old_keys_to_new_keys(state_dict_keys: dict | None = None):
+def convert_old_keys_to_new_keys(state_dict_keys: Optional[dict] = None):
     """
     This function should be applied only once, on the concatenated keys to efficiently rename using
     the key mappings.
@@ -209,6 +210,7 @@ def write_model(
     model_path,
     input_base_path,
     num_shards,
+    safe_serialization=True,
     instruct=False,
 ):
     os.makedirs(model_path, exist_ok=True)
@@ -217,7 +219,7 @@ def write_model(
         params = json.load(f)
 
     params = params.get("model", params)
-    dtype = "bfloat16"
+    torch_dtype = "bfloat16"
 
     # ------------------------------------------------------------
     # Text model params and config
@@ -233,7 +235,7 @@ def write_model(
     cross_attention_num_layers = params["vision_num_cross_attention_layers"]
 
     # some constants from original code
-    rope_parameters = {
+    rope_scaling = {
         "rope_type": "llama3",
         "factor": 8.0,
         "low_freq_factor": 1.0,
@@ -278,12 +280,12 @@ def write_model(
         cross_attention_layers=cross_attention_layers_shift,
         intermediate_size=text_intermediate_size,
         max_position_embeddings=max_position_embeddings,
-        rope_parameters=rope_parameters,
+        rope_scaling=rope_scaling,
         bos_token_id=bos_token_id,
         eos_token_id=eos_token_id,
         pad_token_id=pad_token_id,
         tie_word_embeddings=False,  # Constant set to False
-        dtype=dtype,
+        torch_dtype=torch_dtype,
     )
 
     # ------------------------------------------------------------
@@ -321,11 +323,11 @@ def write_model(
         image_size=vision_tile_size,
         max_num_tiles=vision_max_num_tiles,
         supported_aspect_ratios=vision_supported_aspect_ratios,
-        dtype=dtype,
+        torch_dtype=torch_dtype,
     )
 
     # save config
-    config = MllamaConfig(vision_config=vision_config, text_config=text_config, dtype=dtype)
+    config = MllamaConfig(vision_config=vision_config, text_config=text_config, torch_dtype=torch_dtype)
     config.architectures = ["MllamaForConditionalGeneration"]
     config.save_pretrained(model_path)
     print("Model config saved successfully...")
@@ -446,13 +448,13 @@ def write_model(
     del model.config._name_or_path
 
     print("Saving the model.")
-    model.save_pretrained(model_path)
+    model.save_pretrained(model_path, safe_serialization=safe_serialization)
     del state_dict, model
 
     # Safety check: reload the converted model
     gc.collect()
     print("Reloading the model to check if it's saved correctly.")
-    MllamaForConditionalGeneration.from_pretrained(model_path, dtype=torch.bfloat16, device_map="auto")
+    MllamaForConditionalGeneration.from_pretrained(model_path, torch_dtype=torch.bfloat16, device_map="auto")
     print("Model reloaded successfully.")
 
     # generation config
@@ -476,7 +478,7 @@ class MllamaConverter(TikTokenConverter):
         special_tokens: list[str],
         pattern: str,
         model_max_length: int,
-        chat_template: str | None = None,
+        chat_template: Optional[str] = None,
         **kwargs,
     ):
         super().__init__(vocab_file, pattern=pattern)
@@ -494,7 +496,7 @@ class MllamaConverter(TikTokenConverter):
 
 def write_tokenizer(tokenizer_path: str, save_dir: str, instruct: bool = False):
     model_max_length = CONTEXT_LENGTH
-    pattern = r"(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}{1,3}| ?[^\s\p{L}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+"
+    pattern = r"(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}{1,3}| ?[^\s\p{L}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+"  # noqa: W605
 
     # Special tokens
     num_reserved_special_tokens = 256
@@ -598,6 +600,9 @@ def main():
         help="Location to write HF model and tokenizer",
     )
     parser.add_argument(
+        "--safe_serialization", default=True, type=bool, help="Whether or not to save using `safetensors`."
+    )
+    parser.add_argument(
         "--special_tokens",
         default=None,
         type=list[str],
@@ -618,6 +623,7 @@ def main():
     write_model(
         model_path=args.output_dir,
         input_base_path=args.input_dir,
+        safe_serialization=args.safe_serialization,
         num_shards=args.num_shards,
         instruct=args.instruct,
     )

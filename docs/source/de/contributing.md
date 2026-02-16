@@ -161,7 +161,7 @@ Sie benötigen **[Python 3.9](https://github.com/huggingface/transformers/blob/m
    🤗 Transformers stützt sich auf `black` und `ruff`, um seinen Quellcode konsistent zu formatieren. Nachdem Sie Änderungen vorgenommen haben, wenden Sie automatische Stilkorrekturen und Codeprüfungen, die nicht automatisiert werden können, in einem Schritt an:
 
    ```bash
-   make style
+   make fixup
    ```
 
    Dieser Task ist optimiert, nur mit Dateien zu arbeiten, die von Ihrer PR modifiziert wurden.
@@ -175,7 +175,13 @@ Sie benötigen **[Python 3.9](https://github.com/huggingface/transformers/blob/m
    🤗 Transformers verwendet auch `ruff` und einige benutzerdefinierte Skripte, um auf Programmierfehler zu prüfen. Qualitätskontrollen werden von der CI durchgeführt, aber Sie können die gleichen Überprüfungen auch selbst ausführen:
 
    ```bash
-   make check-repo
+   make quality
+   ```
+
+   Abschließend haben wir viele Skripte, die sicherstellen, dass wir alle betroffenen Dateien aktualisieren, wenn wir ein neues Modell hinzufügen. Sie können diese wie folgt ausführen:
+
+   ```bash
+   make repo-consistency
    ```
 
    Um mehr über diese Prüfungen zu erfahren und wie man mit ihnen Probleme behebt, lesen Sie den Leitfaden zu [Überprüfungen bei einer Pull-Anfrage](https://huggingface.co/docs/transformers/pr_checks).

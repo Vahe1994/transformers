@@ -1,3 +1,4 @@
+# coding=utf-8
 # Copyright 2025 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,10 +14,7 @@
 # limitations under the License.
 """Fast Image processor class for Perceiver."""
 
-from typing import Optional
-
-import torch
-import torchvision.transforms.v2.functional as tvF
+from typing import Optional, Union
 
 from ...image_processing_utils_fast import BaseImageProcessorFast, BatchFeature
 from ...image_transforms import group_images_by_shape, reorder_images
@@ -24,7 +22,20 @@ from ...image_utils import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD, PILImage
 from ...utils import (
     TensorType,
     auto_docstring,
+    is_torch_available,
+    is_torchvision_available,
+    is_torchvision_v2_available,
 )
+
+
+if is_torch_available():
+    import torch
+
+if is_torchvision_available():
+    if is_torchvision_v2_available():
+        from torchvision.transforms.v2 import functional as F
+    else:
+        from torchvision.transforms import functional as F
 
 
 @auto_docstring
@@ -70,23 +81,23 @@ class PerceiverImageProcessorFast(BaseImageProcessorFast):
         min_dim = min(height, width)
         cropped_height = int((size.height / crop_size.height) * min_dim)
         cropped_width = int((size.width / crop_size.width) * min_dim)
-        return super().center_crop(image, SizeDict(height=cropped_height, width=cropped_width))
+        return F.center_crop(image, (cropped_height, cropped_width))
 
     def _preprocess(
         self,
         images: list["torch.Tensor"],
         do_resize: bool,
         size: SizeDict,
-        interpolation: Optional["tvF.InterpolationMode"],
+        interpolation: Optional["F.InterpolationMode"],
         do_center_crop: bool,
         crop_size: SizeDict,
         do_rescale: bool,
         rescale_factor: float,
         do_normalize: bool,
-        image_mean: float | list[float] | None,
-        image_std: float | list[float] | None,
-        disable_grouping: bool | None,
-        return_tensors: str | TensorType | None,
+        image_mean: Optional[Union[float, list[float]]],
+        image_std: Optional[Union[float, list[float]]],
+        disable_grouping: Optional[bool],
+        return_tensors: Optional[Union[str, TensorType]],
         **kwargs,
     ) -> BatchFeature:
         # Group images by size for batched resizing
@@ -112,6 +123,7 @@ class PerceiverImageProcessorFast(BaseImageProcessorFast):
             processed_images_grouped[shape] = stacked_images
 
         processed_images = reorder_images(processed_images_grouped, grouped_images_index)
+        processed_images = torch.stack(processed_images, dim=0) if return_tensors else processed_images
 
         return BatchFeature(data={"pixel_values": processed_images}, tensor_type=return_tensors)
 

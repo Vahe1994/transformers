@@ -14,10 +14,11 @@
 
 import os
 import unittest
+from functools import lru_cache
 
 from transformers.models.phobert.tokenization_phobert import VOCAB_FILES_NAMES, PhobertTokenizer
 
-from ...test_tokenization_common import TokenizerTesterMixin
+from ...test_tokenization_common import TokenizerTesterMixin, use_cache_if_possible
 
 
 class PhobertTokenizationTest(TokenizerTesterMixin, unittest.TestCase):
@@ -39,11 +40,14 @@ class PhobertTokenizationTest(TokenizerTesterMixin, unittest.TestCase):
         cls.merges_file = os.path.join(cls.tmpdirname, VOCAB_FILES_NAMES["merges_file"])
 
         with open(cls.vocab_file, "w", encoding="utf-8") as fp:
-            fp.writelines(f"{token} {vocab_tokens[token]}\n" for token in vocab_tokens)
+            for token in vocab_tokens:
+                fp.write(f"{token} {vocab_tokens[token]}\n")
         with open(cls.merges_file, "w", encoding="utf-8") as fp:
             fp.write("\n".join(merges))
 
     @classmethod
+    @use_cache_if_possible
+    @lru_cache(maxsize=64)
     def get_tokenizer(cls, pretrained_name=None, **kwargs):
         kwargs.update(cls.special_tokens_map)
         pretrained_name = pretrained_name or cls.tmpdirname

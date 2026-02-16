@@ -1,3 +1,4 @@
+# coding=utf-8
 # Copyright 2024 The HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,10 +17,10 @@ https://github.com/DepthAnything/PromptDA"""
 
 import argparse
 import re
-from io import BytesIO
 from pathlib import Path
+from typing import Optional
 
-import httpx
+import requests
 import torch
 from huggingface_hub import hf_hub_download
 from PIL import Image
@@ -130,7 +131,7 @@ ORIGINAL_TO_CONVERTED_KEY_MAPPING = {
 }
 
 
-def convert_old_keys_to_new_keys(state_dict_keys: dict | None = None):
+def convert_old_keys_to_new_keys(state_dict_keys: Optional[dict] = None):
     """
     Convert old state dict keys to new keys using regex patterns.
     """
@@ -203,14 +204,12 @@ def convert_dpt_checkpoint(model_name, pytorch_dump_folder_path, push_to_hub, ve
         image_std=[0.229, 0.224, 0.225],
     )
     url = "https://github.com/DepthAnything/PromptDA/blob/main/assets/example_images/image.jpg?raw=true"
-    with httpx.stream("GET", url) as response:
-        image = Image.open(BytesIO(response.read()))
+    image = Image.open(requests.get(url, stream=True).raw)
 
     prompt_depth_url = (
         "https://github.com/DepthAnything/PromptDA/blob/main/assets/example_images/arkit_depth.png?raw=true"
     )
-    with httpx.stream("GET", prompt_depth_url) as response:
-        prompt_depth = Image.open(BytesIO(response.read()))
+    prompt_depth = Image.open(requests.get(prompt_depth_url, stream=True).raw)
 
     inputs = processor(image, return_tensors="pt", prompt_depth=prompt_depth)
 

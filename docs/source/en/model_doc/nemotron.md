@@ -11,7 +11,6 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 
 -->
-*This model was released on 2024-02-26 and added to Hugging Face Transformers on 2024-08-06.*
 
 # Nemotron
 
@@ -21,22 +20,21 @@ specific language governing permissions and limitations under the License.
 <img alt="SDPA" src="https://img.shields.io/badge/SDPA-DE3412?style=flat&logo=pytorch&logoColor=white">
 </div>
 
-## License
+### License
 
-Minitron is released under the [NVIDIA Open Model License Agreement](https://developer.download.nvidia.com/licenses/nvidia-open-model-license-agreement-june-2024.pdf).
 The use of this model is governed by the [NVIDIA AI Foundation Models Community License Agreement](https://developer.nvidia.com/downloads/nv-ai-foundation-models-license).
 
-## Description
+### Description
 
 Nemotron-4 is a family of enterprise ready generative text models compatible with [NVIDIA NeMo Framework](https://www.nvidia.com/en-us/ai-data-science/generative-ai/nemo-framework/).
 
 NVIDIA NeMo is an end-to-end, cloud-native platform to build, customize, and deploy generative AI models anywhere. It includes training and inferencing frameworks, guardrailing toolkits, data curation tools, and pretrained models, offering enterprises an easy, cost-effective, and fast way to adopt generative AI. To get access to NeMo Framework, please sign up at [this link](https://developer.nvidia.com/nemo-framework/join).
 
-## References
+### References
 
 [Announcement Blog](https://developer.nvidia.com/blog/nvidia-ai-foundation-models-build-custom-enterprise-chatbots-and-co-pilots-with-production-ready-llms/)
 
-## Model Architecture
+### Model Architecture
 
 **Architecture Type:** Transformer
 
@@ -59,15 +57,14 @@ The following code provides an example of how to load the Minitron-4B model and 
 ```python
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
-from accelerate import Accelerator
 
 # Load the tokenizer and model
 model_path = 'nvidia/Minitron-4B-Base'
 tokenizer  = AutoTokenizer.from_pretrained(model_path)
 
-device = Accelerator().device
+device = 'cuda'
 dtype  = torch.bfloat16
-model  = AutoModelForCausalLM.from_pretrained(model_path, dtype=dtype, device_map=device)
+model  = AutoModelForCausalLM.from_pretrained(model_path, torch_dtype=dtype, device_map=device)
 
 # Prepare the input text
 prompt = 'Complete the paragraph: our solar system is'
@@ -81,6 +78,10 @@ output_text = tokenizer.decode(outputs[0])
 print(output_text)
 ```
 
+### License
+
+Minitron is released under the [NVIDIA Open Model License Agreement](https://developer.download.nvidia.com/licenses/nvidia-open-model-license-agreement-june-2024.pdf).
+
 ### Evaluation Results
 
 *5-shot performance.* Language Understanding evaluated using [Massive Multitask Language Understanding](https://huggingface.co/papers/2009.03300):
@@ -93,7 +94,8 @@ print(output_text)
 
 | HellaSwag | Winogrande | GSM8K| ARC-C | XLSum |
 | :------------- | :------------- | :------------- | :------------- | :------------- |
-| 75.0 | 74.0 | 24.1  | 50.9 | 29.5 |
+| 75.0 | 74.0 | 24.1  | 50.9 | 29.5
+
 
 *Code generation performance*. Evaluated using [HumanEval](https://github.com/openai/human-eval):
 
@@ -106,14 +108,13 @@ Please refer to our [paper](https://huggingface.co/papers/2407.14679) for the fu
 ### Citation
 
 If you find our work helpful, please consider citing our paper:
-
-```bibtex
+```
 @article{minitron2024,
       title={Compact Language Models via Pruning and Knowledge Distillation},
       author={Saurav Muralidharan and Sharath Turuvekere Sreenivas and Raviraj Joshi and Marcin Chochowski and Mostofa Patwary and Mohammad Shoeybi and Bryan Catanzaro and Jan Kautz and Pavlo Molchanov},
       journal={arXiv preprint arXiv:2407.14679},
       year={2024},
-      url={https://huggingface.co/papers/2407.14679},
+      url={https://arxiv.org/abs/2407.14679},
 }
 ```
 
@@ -121,10 +122,12 @@ If you find our work helpful, please consider citing our paper:
 
 [[autodoc]] NemotronConfig
 
+
 ## NemotronModel
 
 [[autodoc]] NemotronModel
     - forward
+
 
 ## NemotronForCausalLM
 
@@ -136,10 +139,12 @@ If you find our work helpful, please consider citing our paper:
 [[autodoc]] NemotronForSequenceClassification
     - forward
 
+
 ## NemotronForQuestionAnswering
 
 [[autodoc]] NemotronForQuestionAnswering
     - forward
+
 
 ## NemotronForTokenClassification
 

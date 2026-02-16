@@ -13,7 +13,6 @@ specific language governing permissions and limitations under the License.
 rendered properly in your Markdown viewer.
 
 -->
-*This model was released on 2022-10-07 and added to Hugging Face Transformers on 2023-03-22.*
 
 # Pix2Struct
 
@@ -47,6 +46,7 @@ The original code can be found [here](https://github.com/google-research/pix2str
 ## Pix2StructConfig
 
 [[autodoc]] Pix2StructConfig
+    - from_text_vision_configs
 
 ## Pix2StructTextConfig
 
@@ -59,16 +59,10 @@ The original code can be found [here](https://github.com/google-research/pix2str
 ## Pix2StructProcessor
 
 [[autodoc]] Pix2StructProcessor
-    - __call__
 
 ## Pix2StructImageProcessor
 
 [[autodoc]] Pix2StructImageProcessor
-    - preprocess
-
-## Pix2StructImageProcessorFast
-
-[[autodoc]] Pix2StructImageProcessorFast
     - preprocess
 
 ## Pix2StructTextModel

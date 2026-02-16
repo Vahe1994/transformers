@@ -1,3 +1,4 @@
+# coding=utf-8
 # Copyright 2025 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,14 +14,12 @@
 # limitations under the License.
 """Fast Image processor class for Nougat."""
 
-from typing import Optional
-
-import torch
-import torchvision.transforms.v2.functional as tvF
+from typing import Optional, Union
 
 from ...image_processing_utils import BatchFeature
 from ...image_processing_utils_fast import (
     BaseImageProcessorFast,
+    DefaultFastImageProcessorKwargs,
     group_images_by_shape,
     reorder_images,
 )
@@ -39,8 +38,39 @@ from ...processing_utils import Unpack
 from ...utils import (
     TensorType,
     auto_docstring,
+    is_torch_available,
+    is_torchvision_available,
+    is_torchvision_v2_available,
 )
-from .image_processing_nougat import NougatImageProcessorKwargs
+
+
+if is_torch_available():
+    import torch
+
+if is_torchvision_available():
+    if is_torchvision_v2_available():
+        from torchvision.transforms.v2 import functional as F
+    else:
+        from torchvision.transforms import functional as F
+
+
+class NougatFastImageProcessorKwargs(DefaultFastImageProcessorKwargs):
+    """
+    Args:
+    do_crop_margin (`bool`, *optional*, defaults to `True`):
+            Whether to crop the image margins.
+    do_thumbnail (`bool`, *optional*, defaults to `True`):
+            Whether to resize the image using thumbnail method.
+    do_align_long_axis (`bool`, *optional*, defaults to `False`):
+            Whether to align the long axis of the image with the long axis of `size` by rotating by 90 degrees.
+    do_pad (`bool`, *optional*, defaults to `True`):
+            Whether to pad the images to the largest image size in the batch.
+    """
+
+    do_crop_margin: Optional[bool]
+    do_thumbnail: Optional[bool]
+    do_align_long_axis: Optional[bool]
+    do_pad: Optional[bool]
 
 
 @auto_docstring
@@ -56,13 +86,13 @@ class NougatImageProcessorFast(BaseImageProcessorFast):
     do_pad: bool = True
     do_rescale = True
     do_crop_margin: bool = True
-    valid_kwargs = NougatImageProcessorKwargs
+    valid_kwargs = NougatFastImageProcessorKwargs
 
-    def __init__(self, **kwargs: Unpack[NougatImageProcessorKwargs]):
+    def __init__(self, **kwargs: Unpack[NougatFastImageProcessorKwargs]):
         super().__init__(**kwargs)
 
     @auto_docstring
-    def preprocess(self, images: ImageInput, **kwargs: Unpack[NougatImageProcessorKwargs]) -> BatchFeature:
+    def preprocess(self, images: ImageInput, **kwargs: Unpack[NougatFastImageProcessorKwargs]) -> BatchFeature:
         return super().preprocess(images, **kwargs)
 
     def python_find_non_zero(
@@ -102,7 +132,7 @@ class NougatImageProcessorFast(BaseImageProcessorFast):
             gray_threshold (`int`, *optional*, defaults to `200`)
                 Value below which pixels are considered to be gray.
         """
-        data = tvF.rgb_to_grayscale(image, num_output_channels=1)
+        data = F.rgb_to_grayscale(image, num_output_channels=1)
 
         max_val = torch.max(data)
         min_val = torch.min(data)
@@ -176,7 +206,7 @@ class NougatImageProcessorFast(BaseImageProcessorFast):
 
         new_size = (height, width)
 
-        return tvF.resize(image, new_size, interpolation=tvF.InterpolationMode.BICUBIC)
+        return F.resize(image, new_size, interpolation=F.InterpolationMode.BICUBIC)
 
     def pad_images(
         self,
@@ -205,13 +235,13 @@ class NougatImageProcessorFast(BaseImageProcessorFast):
         pad_right = delta_width - pad_left
 
         padding = (pad_left, pad_top, pad_right, pad_bottom)
-        return tvF.pad(image, padding)
+        return F.pad(image, padding)
 
     def resize(
         self,
         image: "torch.Tensor",
         size: SizeDict,
-        interpolation: Optional["tvF.InterpolationMode"] = None,
+        interpolation: "F.InterpolationMode" = None,
         antialias: bool = True,
         **kwargs,
     ) -> "torch.Tensor":
@@ -229,14 +259,14 @@ class NougatImageProcessorFast(BaseImageProcessorFast):
         Returns:
             `torch.Tensor`: The resized image.
         """
-        interpolation = interpolation if interpolation is not None else tvF.InterpolationMode.BICUBIC
+        interpolation = interpolation if interpolation is not None else F.InterpolationMode.BICUBIC
 
         shortest_edge = min(size["height"], size["width"])
 
         new_size = get_resize_output_image_size(
             image, size=shortest_edge, default_to_square=False, input_data_format=ChannelDimension.FIRST
         )
-        return tvF.resize(image, new_size, interpolation=interpolation, antialias=antialias)
+        return F.resize(image, new_size, interpolation=interpolation, antialias=antialias)
 
     def _preprocess(
         self,
@@ -246,17 +276,17 @@ class NougatImageProcessorFast(BaseImageProcessorFast):
         do_align_long_axis: bool,
         do_thumbnail: bool,
         do_pad: bool,
-        interpolation: Optional["tvF.InterpolationMode"],
+        interpolation: Optional["F.InterpolationMode"],
         do_center_crop: bool,
         crop_size: SizeDict,
         do_rescale: bool,
         rescale_factor: float,
         do_normalize: bool,
         do_crop_margin: bool,
-        image_mean: float | list[float] | None,
-        image_std: float | list[float] | None,
+        image_mean: Optional[Union[float, list[float]]],
+        image_std: Optional[Union[float, list[float]]],
         disable_grouping: bool,
-        return_tensors: str | TensorType | None,
+        return_tensors: Optional[Union[str, TensorType]],
         **kwargs,
     ) -> BatchFeature:
         # Crop images
@@ -289,6 +319,7 @@ class NougatImageProcessorFast(BaseImageProcessorFast):
             processed_images_grouped[shape] = stacked_images
 
         processed_images = reorder_images(processed_images_grouped, grouped_images_index)
+        processed_images = torch.stack(processed_images, dim=0) if return_tensors else processed_images
 
         return BatchFeature(data={"pixel_values": processed_images}, tensor_type=return_tensors)
 

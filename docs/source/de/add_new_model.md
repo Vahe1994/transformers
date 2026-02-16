@@ -22,7 +22,7 @@ Auf dem Weg dorthin, werden Sie:
 - Einblicke in bewährte Open-Source-Verfahren erhalten
 - die Konstruktionsprinzipien hinter einer der beliebtesten Deep-Learning-Bibliotheken verstehen
 - lernen Sie, wie Sie große Modelle effizient testen können
-- lernen Sie, wie Sie Python-Hilfsprogramme wie `black`, `ruff` und `make fix-repo` integrieren, um sauberen und lesbaren Code zu gewährleisten
+- lernen Sie, wie Sie Python-Hilfsprogramme wie `black`, `ruff` und `make fix-copies` integrieren, um sauberen und lesbaren Code zu gewährleisten
 
 Ein Mitglied des Hugging Face-Teams wird Ihnen dabei zur Seite stehen, damit Sie nicht alleine sind. 🤗 ❤️
 
@@ -53,7 +53,7 @@ Lassen Sie uns daher ein wenig tiefer in das allgemeine Design der Bibliothek ei
 ### Überblick über die Modelle
 
 Um ein Modell erfolgreich hinzuzufügen, ist es wichtig, die Interaktion zwischen Ihrem Modell und seiner Konfiguration zu verstehen,
-[`PreTrainedModel`] und [`PreTrainedConfig`]. Als Beispiel werden wir
+[`PreTrainedModel`] und [`PretrainedConfig`]. Als Beispiel werden wir
 das Modell, das zu 🤗 Transformers hinzugefügt werden soll, `BrandNewBert` nennen.
 
 Schauen wir uns das mal an:
@@ -81,10 +81,10 @@ model.config  # model has access to its config
 ```
 
 Ähnlich wie das Modell erbt die Konfiguration grundlegende Serialisierungs- und Deserialisierungsfunktionalitäten von
-[`PreTrainedConfig`]. Beachten Sie, dass die Konfiguration und das Modell immer in zwei verschiedene Formate serialisiert werden
+[`PretrainedConfig`]. Beachten Sie, dass die Konfiguration und das Modell immer in zwei verschiedene Formate serialisiert werden
 unterschiedliche Formate serialisiert werden - das Modell in eine *pytorch_model.bin* Datei und die Konfiguration in eine *config.json* Datei. Aufruf von
 [`~PreTrainedModel.save_pretrained`] wird automatisch
-[`~PreTrainedConfig.save_pretrained`] auf, so dass sowohl das Modell als auch die Konfiguration gespeichert werden.
+[`~PretrainedConfig.save_pretrained`] auf, so dass sowohl das Modell als auch die Konfiguration gespeichert werden.
 
 
 ### Code-Stil
@@ -508,16 +508,16 @@ BERT `_init_weights` Methode:
 def _init_weights(self, module):
     """Initialize the weights"""
     if isinstance(module, nn.Linear):
-        module.weight.normal_(mean=0.0, std=self.config.initializer_range)
+        module.weight.data.normal_(mean=0.0, std=self.config.initializer_range)
         if module.bias is not None:
-            module.bias.zero_()
+            module.bias.data.zero_()
     elif isinstance(module, nn.Embedding):
-        module.weight.normal_(mean=0.0, std=self.config.initializer_range)
+        module.weight.data.normal_(mean=0.0, std=self.config.initializer_range)
         if module.padding_idx is not None:
             module.weight.data[module.padding_idx].zero_()
     elif isinstance(module, nn.LayerNorm):
-        module.bias.zero_()
-        module.weight.fill_(1.0)
+        module.bias.data.zero_()
+        module.weight.data.fill_(1.0)
 ```
 
 Sie können weitere benutzerdefinierte Schemata verwenden, wenn Sie eine spezielle Initialisierung für einige Module benötigen. Zum Beispiel in
@@ -533,9 +533,9 @@ def _init_weights(self, module):
         module.project_hid._is_hf_initialized = True
         module.project_q._is_hf_initialized = True
     elif isinstance(module, nn.Linear):
-        module.weight.normal_(mean=0.0, std=self.config.initializer_range)
+        module.weight.data.normal_(mean=0.0, std=self.config.initializer_range)
         if module.bias is not None:
-            module.bias.zero_()
+            module.bias.data.zero_()
 ```
 
 Das Flag `_is_hf_initialized` wird intern verwendet, um sicherzustellen, dass wir ein Submodul nur einmal initialisieren. Wenn Sie es auf
@@ -839,7 +839,7 @@ make style
 und überprüfen Sie, ob Ihr Kodierungsstil die Qualitätsprüfung besteht:
 
 ```bash
-make check-repo
+make quality
 ```
 
 Es gibt noch ein paar andere sehr strenge Designtests in 🤗 Transformers, die möglicherweise noch fehlschlagen, was sich in den

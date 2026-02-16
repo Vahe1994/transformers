@@ -13,7 +13,6 @@ specific language governing permissions and limitations under the License.
 rendered properly in your Markdown viewer.
 
 -->
-*This model was released on 2022-07-11 and added to Hugging Face Transformers on 2023-03-27.*
 
 # NLLB-MOE
 
@@ -110,6 +109,7 @@ See example below for a translation from romanian to german:
 - [Translation task guide](../tasks/translation)
 - [Summarization task guide](../tasks/summarization)
 
+
 ## NllbMoeConfig
 
 [[autodoc]] NllbMoeConfig
@@ -134,3 +134,4 @@ See example below for a translation from romanian to german:
 
 [[autodoc]] NllbMoeForConditionalGeneration
     - forward
+

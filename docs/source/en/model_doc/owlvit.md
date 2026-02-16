@@ -13,7 +13,6 @@ specific language governing permissions and limitations under the License.
 rendered properly in your Markdown viewer.
 
 -->
-*This model was released on 2022-05-12 and added to Hugging Face Transformers on 2022-07-22.*
 
 # OWL-ViT
 
@@ -81,6 +80,7 @@ A demo notebook on using OWL-ViT for zero- and one-shot (image-guided) object de
 ## OwlViTConfig
 
 [[autodoc]] OwlViTConfig
+    - from_text_vision_configs
 
 ## OwlViTTextConfig
 

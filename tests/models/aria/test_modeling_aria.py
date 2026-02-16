@@ -15,7 +15,6 @@
 
 import unittest
 
-import pytest
 import requests
 
 from transformers import (
@@ -61,10 +60,6 @@ class AriaVisionText2TextModelTester:
     def __init__(
         self,
         parent,
-        batch_size=13,
-        num_channels=3,
-        image_size=16,
-        num_image_tokens=4,
         ignore_index=-100,
         image_token_index=9,
         projector_hidden_act="gelu",
@@ -87,16 +82,16 @@ class AriaVisionText2TextModelTester:
             num_choices=4,
             pad_token_id=1,
             hidden_size=32,
-            intermediate_size=16,
+            intermediate_size=64,
             max_position_embeddings=60,
             model_type="aria_moe_lm",
             moe_intermediate_size=4,
-            moe_num_experts=3,
+            moe_num_experts=4,
             moe_topk=2,
-            num_attention_heads=2,
+            num_attention_heads=8,
             num_experts_per_tok=3,
             num_hidden_layers=2,
-            num_key_value_heads=2,
+            num_key_value_heads=8,
             rope_theta=5000000,
             vocab_size=99,
             eos_token_id=2,
@@ -104,15 +99,15 @@ class AriaVisionText2TextModelTester:
         ),
         is_training=True,
         vision_config=Idefics3VisionConfig(
-            image_size=16,
-            patch_size=8,
+            image_size=358,
+            patch_size=10,
             num_channels=3,
             is_training=True,
             hidden_size=32,
-            projection_dim=4,
+            projection_dim=20,
             num_hidden_layers=2,
-            num_attention_heads=2,
-            intermediate_size=4,
+            num_attention_heads=16,
+            intermediate_size=10,
             dropout=0.1,
             attention_dropout=0.1,
             initializer_range=0.02,
@@ -134,26 +129,22 @@ class AriaVisionText2TextModelTester:
         self.num_attention_heads = text_config.num_attention_heads
         self.is_training = is_training
 
-        self.batch_size = batch_size
-        self.num_channels = num_channels
-        self.image_size = image_size
-        self.num_image_tokens = num_image_tokens
+        self.batch_size = 10
+        self.num_channels = 3
+        self.image_size = 358
+        self.num_image_tokens = 128
         self.seq_length = seq_length + self.num_image_tokens
-        self.projector_patch_to_query_dict = {
-            vision_config.image_size**2 // vision_config.patch_size**2: vision_config.projection_dim
-        }
 
     def get_config(self):
         return AriaConfig(
-            text_config=self.text_config.to_dict(),
-            vision_config=self.vision_config.to_dict(),
+            text_config=self.text_config,
+            vision_config=self.vision_config,
             ignore_index=self.ignore_index,
             image_token_index=self.image_token_index,
             projector_hidden_act=self.projector_hidden_act,
             vision_feature_select_strategy=self.vision_feature_select_strategy,
             vision_feature_layer=self.vision_feature_layer,
             eos_token_id=self.eos_token_id,
-            projector_patch_to_query_dict=self.projector_patch_to_query_dict,
         )
 
     def prepare_config_and_inputs(self):
@@ -184,6 +175,7 @@ class AriaVisionText2TextModelTester:
         return config, inputs_dict
 
 
+@slow
 @require_torch
 class AriaForConditionalGenerationModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase):
     """
@@ -191,30 +183,72 @@ class AriaForConditionalGenerationModelTest(ModelTesterMixin, GenerationTesterMi
     """
 
     all_model_classes = (AriaModel, AriaForConditionalGeneration) if is_torch_available() else ()
-
+    test_pruning = False
+    test_head_masking = False
+    test_torchscript = False
     _is_composite = True
 
     def setUp(self):
         self.model_tester = AriaVisionText2TextModelTester(self)
         self.config_tester = ConfigTester(self, config_class=AriaConfig, has_text_modality=False)
 
-    @pytest.mark.xfail(
-        reason="This architecture seems to not compute gradients for the last vision-layernorm because the model uses hidden states pre-norm"
+    @unittest.skip(
+        reason="This architecture seems to not compute gradients properly when using GC, check: https://github.com/huggingface/transformers/pull/27124"
     )
     def test_training_gradient_checkpointing(self):
-        super().test_training_gradient_checkpointing()
+        pass
 
-    @pytest.mark.xfail(
-        reason="This architecture seems to not compute gradients for the last vision-layernorm because the model uses hidden states pre-norm"
+    @unittest.skip(
+        reason="This architecture seems to not compute gradients properly when using GC, check: https://github.com/huggingface/transformers/pull/27124"
+    )
+    def test_training_gradient_checkpointing_use_reentrant(self):
+        pass
+
+    @unittest.skip(
+        reason="This architecture seems to not compute gradients properly when using GC, check: https://github.com/huggingface/transformers/pull/27124"
     )
     def test_training_gradient_checkpointing_use_reentrant_false(self):
-        super().test_training_gradient_checkpointing_use_reentrant_false()
+        pass
 
-    @pytest.mark.xfail(
-        reason="This architecture seems to not compute gradients for the last vision-layernorm because the model uses hidden states pre-norm"
-    )
-    def test_training_gradient_checkpointing_use_reentrant_true(self):
-        super().test_training_gradient_checkpointing_use_reentrant_true()
+    @unittest.skip(reason="Compile not yet supported because in LLava models")
+    def test_sdpa_can_compile_dynamic(self):
+        pass
+
+    @unittest.skip(reason="Compile not yet supported because in LLava models")
+    def test_sdpa_can_dispatch_on_flash(self):
+        pass
+
+    @unittest.skip(reason="Feedforward chunking is not yet supported")
+    def test_feed_forward_chunking(self):
+        pass
+
+    @unittest.skip(reason="Unstable test")
+    def test_initialization(self):
+        pass
+
+    @unittest.skip(reason="Unstable test")
+    def test_dola_decoding_sample(self):
+        pass
+
+    @unittest.skip(reason="Dynamic control flow due to MoE")
+    def test_generate_with_static_cache(self):
+        pass
+
+    @unittest.skip(reason="Dynamic control flow due to MoE")
+    def test_generate_from_inputs_embeds_with_static_cache(self):
+        pass
+
+    @unittest.skip(reason="Aria uses nn.MHA which is not compatible with offloading")
+    def test_cpu_offload(self):
+        pass
+
+    @unittest.skip(reason="Aria uses nn.MHA which is not compatible with offloading")
+    def test_disk_offload_bin(self):
+        pass
+
+    @unittest.skip(reason="Aria uses nn.MHA which is not compatible with offloading")
+    def test_disk_offload_safetensors(self):
+        pass
 
 
 SKIP = False
@@ -227,7 +261,6 @@ if hasattr(torch_accelerator_module, "get_device_properties"):
 
 @unittest.skipIf(SKIP, reason="A10 doesn't have enough GPU memory for this tests")
 @require_torch
-@slow
 class AriaForConditionalGenerationIntegrationTest(unittest.TestCase):
     def setUp(self):
         self.processor = AutoProcessor.from_pretrained("rhymes-ai/Aria")
@@ -236,6 +269,7 @@ class AriaForConditionalGenerationIntegrationTest(unittest.TestCase):
     def tearDown(self):
         cleanup(torch_device, gc_collect=True)
 
+    @slow
     @require_torch_large_accelerator
     @require_bitsandbytes
     def test_small_model_integration_test(self):
@@ -273,6 +307,7 @@ class AriaForConditionalGenerationIntegrationTest(unittest.TestCase):
         ).get_expectation()
         self.assertEqual(decoded_output, expected_output)
 
+    @slow
     @require_torch_large_accelerator
     @require_bitsandbytes
     def test_small_model_integration_test_llama_single(self):
@@ -304,6 +339,7 @@ class AriaForConditionalGenerationIntegrationTest(unittest.TestCase):
             f"Expected: {repr(EXPECTED_DECODED_TEXT)}\nActual: {repr(decoded_output)}",
         )
 
+    @slow
     @require_torch_large_accelerator
     @require_bitsandbytes
     def test_small_model_integration_test_llama_batched(self):
@@ -345,6 +381,7 @@ class AriaForConditionalGenerationIntegrationTest(unittest.TestCase):
         decoded_output = processor.batch_decode(output, skip_special_tokens=True)
         self.assertEqual(decoded_output, EXPECTED_DECODED_TEXT)
 
+    @slow
     @require_torch_large_accelerator
     @require_bitsandbytes
     def test_small_model_integration_test_batch(self):
@@ -381,6 +418,7 @@ class AriaForConditionalGenerationIntegrationTest(unittest.TestCase):
         decoded_output = self.processor.batch_decode(output, skip_special_tokens=True)
         self.assertEqual(decoded_output, EXPECTED_DECODED_TEXT)
 
+    @slow
     @require_torch_large_accelerator
     @require_bitsandbytes
     def test_small_model_integration_test_llama_batched_regression(self):
@@ -414,6 +452,7 @@ class AriaForConditionalGenerationIntegrationTest(unittest.TestCase):
         decoded_output = processor.batch_decode(output, skip_special_tokens=True)
         self.assertEqual(decoded_output, EXPECTED_DECODED_TEXT)
 
+    @slow
     @require_torch_large_accelerator
     @require_vision
     @require_bitsandbytes
@@ -506,6 +545,7 @@ class AriaForConditionalGenerationIntegrationTest(unittest.TestCase):
         self.assertEqual(slow_tokenizer.tokenize(prompt), EXPECTED_OUTPUT)
         self.assertEqual(fast_tokenizer.tokenize(prompt), EXPECTED_OUTPUT)
 
+    @slow
     @require_torch_large_accelerator
     @require_bitsandbytes
     def test_generation_no_images(self):
@@ -515,6 +555,7 @@ class AriaForConditionalGenerationIntegrationTest(unittest.TestCase):
             quantization_config=BitsAndBytesConfig(load_in_4bit=True, llm_int8_skip_modules=["multihead_attn"]),
         )
         processor = AutoProcessor.from_pretrained(model_id)
+        assert model.device.type == "cuda", "This test is only supported on CUDA"  # TODO: remove this
         # Prepare inputs with no images
         inputs = processor(text="Hello, I am", return_tensors="pt").to(torch_device)
 

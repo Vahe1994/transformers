@@ -1,3 +1,4 @@
+# coding=utf-8
 # Copyright 2023 MBZUAI and The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,13 +15,14 @@
 """PyTorch SwiftFormer model."""
 
 import collections.abc
+from typing import Optional, Union
 
 import torch
+import torch.utils.checkpoint
 from torch import nn
+from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 
-from ... import initialization as init
 from ...activations import ACT2CLS
-from ...modeling_layers import GradientCheckpointingLayer
 from ...modeling_outputs import BaseModelOutputWithNoAttention, ImageClassifierOutputWithNoAttention
 from ...modeling_utils import PreTrainedModel
 from ...utils import auto_docstring, logging
@@ -62,6 +64,11 @@ def drop_path(input: torch.Tensor, drop_prob: float = 0.0, training: bool = Fals
     """
     Drop paths (Stochastic Depth) per sample (when applied in main path of residual blocks).
 
+    Comment by Ross Wightman: This is the same as the DropConnect impl I created for EfficientNet, etc networks,
+    however, the original name is misleading as 'Drop Connect' is a different form of dropout in a separate paper...
+    See discussion: https://github.com/tensorflow/tpu/issues/494#issuecomment-532968956 ... I've opted for changing the
+    layer and argument names to 'drop path' rather than mix DropConnect as a layer name and use 'survival rate' as the
+    argument.
     """
     if drop_prob == 0.0 or not training:
         return input
@@ -295,7 +302,7 @@ class SwiftFormerEncoderBlock(nn.Module):
         return x
 
 
-class SwiftFormerStage(GradientCheckpointingLayer):
+class SwiftFormerStage(nn.Module):
     """
     A Swiftformer stage consisting of a series of `SwiftFormerConvEncoder` blocks and a final
     `SwiftFormerEncoderBlock`.
@@ -355,9 +362,9 @@ class SwiftFormerEncoder(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        output_hidden_states: bool | None = None,
-        return_dict: bool | None = None,
-    ) -> tuple | BaseModelOutputWithNoAttention:
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+    ) -> Union[tuple, BaseModelOutputWithNoAttention]:
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
@@ -384,32 +391,26 @@ class SwiftFormerPreTrainedModel(PreTrainedModel):
     config: SwiftFormerConfig
     base_model_prefix = "swiftformer"
     main_input_name = "pixel_values"
-    input_modalities = ("image",)
     supports_gradient_checkpointing = True
     _no_split_modules = ["SwiftFormerEncoderBlock"]
 
-    @torch.no_grad()
     def _init_weights(self, module: nn.Module) -> None:
         """Initialize the weights"""
         if isinstance(module, (nn.Conv2d, nn.Linear)):
-            init.trunc_normal_(module.weight, std=0.02)
+            nn.init.trunc_normal_(module.weight, std=0.02)
             if module.bias is not None:
-                init.constant_(module.bias, 0)
+                nn.init.constant_(module.bias, 0)
         elif isinstance(module, (nn.LayerNorm, nn.BatchNorm2d)):
-            init.constant_(module.bias, 0)
-            init.constant_(module.weight, 1.0)
-            if getattr(module, "running_mean", None) is not None:
-                init.zeros_(module.running_mean)
-                init.ones_(module.running_var)
-                init.zeros_(module.num_batches_tracked)
+            nn.init.constant_(module.bias, 0)
+            nn.init.constant_(module.weight, 1.0)
         elif isinstance(module, (SwiftFormerConvEncoder, SwiftFormerLocalRepresentation)):
-            init.ones_(module.layer_scale)
+            module.layer_scale.data.fill_(1.0)
         elif isinstance(module, SwiftFormerEncoderBlock):
             if self.config.use_layer_scale:
-                init.constant_(module.layer_scale_1, self.config.layer_scale_init_value)
-                init.constant_(module.layer_scale_2, self.config.layer_scale_init_value)
+                module.layer_scale_1.data.fill_(self.config.layer_scale_init_value)
+                module.layer_scale_2.data.fill_(self.config.layer_scale_init_value)
         elif isinstance(module, SwiftFormerEfficientAdditiveAttention):
-            init.normal_(module.w_g)
+            nn.init.normal_(module.w_g)
 
 
 @auto_docstring
@@ -427,11 +428,10 @@ class SwiftFormerModel(SwiftFormerPreTrainedModel):
     @auto_docstring
     def forward(
         self,
-        pixel_values: torch.Tensor | None = None,
-        output_hidden_states: bool | None = None,
-        return_dict: bool | None = None,
-        **kwargs,
-    ) -> tuple | BaseModelOutputWithNoAttention:
+        pixel_values: Optional[torch.Tensor] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+    ) -> Union[tuple, BaseModelOutputWithNoAttention]:
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
@@ -477,12 +477,11 @@ class SwiftFormerForImageClassification(SwiftFormerPreTrainedModel):
     @auto_docstring
     def forward(
         self,
-        pixel_values: torch.Tensor | None = None,
-        labels: torch.Tensor | None = None,
-        output_hidden_states: bool | None = None,
-        return_dict: bool | None = None,
-        **kwargs,
-    ) -> tuple | ImageClassifierOutputWithNoAttention:
+        pixel_values: Optional[torch.Tensor] = None,
+        labels: Optional[torch.Tensor] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+    ) -> Union[tuple, ImageClassifierOutputWithNoAttention]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
             Labels for computing the image classification/regression loss. Indices should be in `[0, ...,
@@ -510,7 +509,26 @@ class SwiftFormerForImageClassification(SwiftFormerPreTrainedModel):
         # calculate loss
         loss = None
         if labels is not None:
-            loss = self.loss_function(labels, logits, self.config)
+            if self.config.problem_type is None:
+                if self.num_labels == 1:
+                    self.config.problem_type = "regression"
+                elif self.num_labels > 1 and (labels.dtype == torch.long or labels.dtype == torch.int):
+                    self.config.problem_type = "single_label_classification"
+                else:
+                    self.config.problem_type = "multi_label_classification"
+
+            if self.config.problem_type == "regression":
+                loss_fct = MSELoss()
+                if self.num_labels == 1:
+                    loss = loss_fct(logits.squeeze(), labels.squeeze())
+                else:
+                    loss = loss_fct(logits, labels)
+            elif self.config.problem_type == "single_label_classification":
+                loss_fct = CrossEntropyLoss()
+                loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
+            elif self.config.problem_type == "multi_label_classification":
+                loss_fct = BCEWithLogitsLoss()
+                loss = loss_fct(logits, labels)
 
         if not return_dict:
             output = (logits,) + outputs[1:]

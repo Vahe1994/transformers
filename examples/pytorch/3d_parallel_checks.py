@@ -33,6 +33,7 @@ import logging
 import os
 from collections.abc import Iterable
 from contextlib import nullcontext
+from typing import Optional
 
 import torch
 import torch.distributed as dist
@@ -55,7 +56,7 @@ from torch.utils.data.distributed import DistributedSampler
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 
-ignore_sanity_checks = int(os.environ.get("IGNORE_SANITY", "0")) == 1
+ignore_sanity_checks = int(os.environ.get("IGNORE_SANITY", 0)) == 1
 # torch.use_deterministic_algorithms(True)
 torch.backends.cudnn.deterministic = True
 
@@ -73,9 +74,9 @@ logger = logging.getLogger(__name__)
 
 
 def main():
-    tp_size = int(os.environ.get("TP_SIZE", "1"))
-    dp_size = int(os.environ.get("DP_SIZE", "4"))
-    cp_size = int(os.environ.get("CP_SIZE", "1"))  # Add CP size configuration
+    tp_size = int(os.environ.get("TP_SIZE", 1))
+    dp_size = int(os.environ.get("DP_SIZE", 4))
+    cp_size = int(os.environ.get("CP_SIZE", 1))  # Add CP size configuration
     sdpa_backend = SDPBackend.FLASH_ATTENTION  # For CP
     # sdpa_backend = SDPBackend.MATH # For CP
     global_batch_size = 8  # Desired global batch size
@@ -164,7 +165,7 @@ def main():
         model_name,
         device_mesh=tp_mesh if dist.is_initialized() else None,
         tp_plan="auto",
-        dtype=torch.bfloat16,
+        torch_dtype=torch.bfloat16,
     )
     logger.info(f"Model loaded onto device mesh: {tp_mesh}")
 
@@ -457,7 +458,7 @@ def main():
     else:
         # Fallback to regular save for non-distributed case
         save_dir = "test_model_nondist"
-        model.save_pretrained(save_dir)
+        model.save_pretrained(save_dir, safe_serialization=False)
         tokenizer.save_pretrained(save_dir)  # Save tokenizer too
         logger.info(f"Saved model to {save_dir}")
 
@@ -468,7 +469,7 @@ def main():
         new_model = AutoModelForCausalLM.from_pretrained(
             model_name,
             device_mesh=tp_mesh,
-            dtype=torch.bfloat16,  # Use same dtype
+            torch_dtype=torch.bfloat16,  # Use same dtype
         )
         new_optimizer = optim.AdamW(new_model.parameters(), lr=LR)
 
@@ -585,7 +586,7 @@ def all_reduce_grads(model, world_mesh, use_ddp):
 class ContextParallelCollator:
     """Collator for context parallel training that splits sequences into chunks."""
 
-    def __init__(self, cp_mesh: DeviceMesh | None = None):
+    def __init__(self, cp_mesh: Optional[DeviceMesh] = None):
         self.cp_mesh = cp_mesh
 
     def __call__(self, batch: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
@@ -759,7 +760,8 @@ def get_parameters(model: nn.Module) -> Iterable[torch.Tensor]:
             if isinstance(attr, torch.Tensor) and attr.requires_grad:
                 yield attr
         # Recursively get parameters from submodules
-        yield from get_parameters(module)
+        for param in get_parameters(module):
+            yield param
 
 
 def update_model_parameters(model: nn.Module) -> None:

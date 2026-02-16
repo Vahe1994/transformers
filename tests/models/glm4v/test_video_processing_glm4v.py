@@ -1,3 +1,4 @@
+# coding=utf-8
 # Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -51,7 +52,7 @@ class Glm4vVideoProcessingTester:
         image_std=IMAGENET_STANDARD_STD,
         do_convert_rgb=True,
     ):
-        size = size if size is not None else {"longest_edge": 20, "shortest_edge": 10}
+        size = size if size is not None else {"longest_edge": 20}
         self.parent = parent
         self.batch_size = batch_size
         self.num_frames = num_frames
@@ -95,7 +96,7 @@ class Glm4vVideoProcessingTester:
             metadata = {
                 "fps": 2,
                 "duration": num_frames / 2,
-                "total_num_frames": num_frames,
+                "total_frames": num_frames,
             }
             video_metadata.append(metadata)
         return video_metadata
@@ -128,8 +129,6 @@ class Glm4vVideoProcessingTester:
                 height,
                 width,
                 factor=self.patch_size * self.merge_size,
-                min_pixels=self.size["shortest_edge"],
-                max_pixels=self.size["longest_edge"],
             )
             grid_h, grid_w = resized_height // self.patch_size, resized_width // self.patch_size
             seq_len += grid_t * grid_h * grid_w
@@ -164,12 +163,10 @@ class Glm4vVideoProcessingTest(VideoProcessingTestMixin, unittest.TestCase):
 
     def test_video_processor_from_dict_with_kwargs(self):
         video_processor = self.fast_video_processing_class.from_dict(self.video_processor_dict)
-        self.assertEqual(video_processor.size, {"longest_edge": 20, "shortest_edge": 10})
+        self.assertEqual(video_processor.size, {"longest_edge": 20})
 
-        video_processor = self.fast_video_processing_class.from_dict(
-            self.video_processor_dict, size={"longest_edge": 42, "shortest_edge": 42}
-        )
-        self.assertEqual(video_processor.size, {"longest_edge": 42, "shortest_edge": 42})
+        video_processor = self.fast_video_processing_class.from_dict(self.video_processor_dict, size=42)
+        self.assertEqual(video_processor.size, {"height": 42, "width": 42})
 
     def test_call_pil(self):
         for video_processing_class in self.video_processor_list:
@@ -249,8 +246,8 @@ class Glm4vVideoProcessingTest(VideoProcessingTestMixin, unittest.TestCase):
                 video_inputs[0],
                 return_tensors="pt",
                 input_data_format="channels_last",
-                image_mean=(0.0, 0.0, 0.0, 0.0),
-                image_std=(1.0, 1.0, 1.0, 1.0),
+                image_mean=0,
+                image_std=1,
             )[self.input_name]
             expected_output_video_shape = self.video_processor_tester.expected_output_video_shape([video_inputs[0]])
             self.assertEqual(list(encoded_videos.shape), expected_output_video_shape)
@@ -260,8 +257,8 @@ class Glm4vVideoProcessingTest(VideoProcessingTestMixin, unittest.TestCase):
                 video_inputs,
                 return_tensors="pt",
                 input_data_format="channels_last",
-                image_mean=(0.0, 0.0, 0.0, 0.0),
-                image_std=(1.0, 1.0, 1.0, 1.0),
+                image_mean=0,
+                image_std=1,
             )[self.input_name]
             expected_output_video_shape = self.video_processor_tester.expected_output_video_shape(video_inputs)
             self.assertEqual(list(encoded_videos.shape), expected_output_video_shape)

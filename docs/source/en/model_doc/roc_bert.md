@@ -13,7 +13,6 @@ specific language governing permissions and limitations under the License.
 rendered properly in your Markdown viewer.
 
 -->
-*This model was released on 2022-05-27 and added to Hugging Face Transformers on 2022-11-08.*
 
 <div style="float: right;">
    <div class="flex flex-wrap space-x-1">
@@ -29,7 +28,7 @@ You can find all the original RoCBert checkpoints under the [weiweishi](https://
 
 > [!TIP]
 > This model was contributed by [weiweishi](https://huggingface.co/weiweishi).
->
+> 
 > Click on the RoCBert models in the right sidebar for more examples of how to apply RoCBert to different Chinese language tasks.
 
 The example below demonstrates how to predict the [MASK] token with [`Pipeline`], [`AutoModel`], and from the command line.
@@ -44,7 +43,7 @@ from transformers import pipeline
 pipeline = pipeline(
    task="fill-mask",
    model="weiweishi/roc-bert-base-zh",
-   dtype=torch.float16,
+   torch_dtype=torch.float16,
    device=0
 )
 pipeline("這家餐廳的拉麵是我[MASK]過的最好的拉麵之")
@@ -62,10 +61,10 @@ tokenizer = AutoTokenizer.from_pretrained(
 )
 model = AutoModelForMaskedLM.from_pretrained(
    "weiweishi/roc-bert-base-zh",
-   dtype=torch.float16,
+   torch_dtype=torch.float16,
    device_map="auto",
 )
-inputs = tokenizer("這家餐廳的拉麵是我[MASK]過的最好的拉麵之", return_tensors="pt").to(model.device)
+inputs = tokenizer("這家餐廳的拉麵是我[MASK]過的最好的拉麵之", return_tensors="pt").to("cuda")
 
 with torch.no_grad():
    outputs = model(**inputs)
@@ -82,7 +81,7 @@ print(f"The predicted token is: {predicted_token}")
 <hfoption id="transformers CLI">
 
 ```bash
-echo -e "這家餐廳的拉麵是我[MASK]過的最好的拉麵之" | transformers run --task fill-mask --model weiweishi/roc-bert-base-zh --device 0
+echo -e "這家餐廳的拉麵是我[MASK]過的最好的拉麵之" | transformers-cli run --task fill-mask --model weiweishi/roc-bert-base-zh --device 0
 ```
 
 </hfoption>

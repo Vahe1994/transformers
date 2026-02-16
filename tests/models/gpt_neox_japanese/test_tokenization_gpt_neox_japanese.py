@@ -16,6 +16,7 @@
 import json
 import os
 import unittest
+from functools import lru_cache
 
 from transformers.models.gpt_neox_japanese.tokenization_gpt_neox_japanese import (
     VOCAB_FILES_NAMES,
@@ -23,7 +24,7 @@ from transformers.models.gpt_neox_japanese.tokenization_gpt_neox_japanese import
 )
 from transformers.testing_utils import require_tokenizers, slow
 
-from ...test_tokenization_common import TokenizerTesterMixin
+from ...test_tokenization_common import TokenizerTesterMixin, use_cache_if_possible
 
 
 @require_tokenizers
@@ -72,6 +73,8 @@ class GPTNeoXJapaneseTokenizationTest(TokenizerTesterMixin, unittest.TestCase):
             emoji_writer.write(json.dumps(emoji_tokens))
 
     @classmethod
+    @use_cache_if_possible
+    @lru_cache(maxsize=64)
     def get_tokenizer(cls, pretrained_name=None, **kwargs):
         kwargs.update(cls.special_tokens_map)
         pretrained_name = pretrained_name or cls.tmpdirname
@@ -137,8 +140,4 @@ class GPTNeoXJapaneseTokenizationTest(TokenizerTesterMixin, unittest.TestCase):
 
     @unittest.skip(reason="tokenizer has no padding token")
     def test_padding_different_model_input_name(self):
-        pass
-
-    @unittest.skip(reason="sequence_ids() is not available for Python backend tokenizers")
-    def test_sequence_ids(self):
         pass

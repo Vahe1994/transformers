@@ -1,3 +1,4 @@
+# coding=utf-8
 # Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,22 +14,17 @@
 # limitations under the License.
 """Fast Image processor class for DepthPro."""
 
-from typing import TYPE_CHECKING, Optional
-
-import torch
+from typing import TYPE_CHECKING, Optional, Union
 
 from ...image_processing_base import BatchFeature
 from ...image_processing_utils_fast import BaseImageProcessorFast, group_images_by_shape, reorder_images
-from ...image_utils import (
-    IMAGENET_STANDARD_MEAN,
-    IMAGENET_STANDARD_STD,
-    PILImageResampling,
-    SizeDict,
-    pil_torch_interpolation_mapping,
-)
+from ...image_utils import IMAGENET_STANDARD_MEAN, IMAGENET_STANDARD_STD, PILImageResampling, SizeDict
 from ...utils import (
     TensorType,
     auto_docstring,
+    is_torch_available,
+    is_torchvision_available,
+    is_torchvision_v2_available,
     logging,
     requires_backends,
 )
@@ -38,11 +34,20 @@ from ...utils.import_utils import requires
 if TYPE_CHECKING:
     from .modeling_depth_pro import DepthProDepthEstimatorOutput
 
-
-import torchvision.transforms.v2.functional as tvF
-
-
 logger = logging.get_logger(__name__)
+
+
+if is_torch_available():
+    import torch
+
+
+if is_torchvision_available():
+    from ...image_utils import pil_torch_interpolation_mapping
+
+    if is_torchvision_v2_available():
+        from torchvision.transforms.v2 import functional as F
+    else:
+        from torchvision.transforms import functional as F
 
 
 @auto_docstring
@@ -63,17 +68,16 @@ class DepthProImageProcessorFast(BaseImageProcessorFast):
         images: list["torch.Tensor"],
         do_resize: bool,
         size: SizeDict,
-        interpolation: Optional["tvF.InterpolationMode"],
+        interpolation: Optional["F.InterpolationMode"],
         do_center_crop: bool,
         crop_size: SizeDict,
         do_rescale: bool,
         rescale_factor: float,
         do_normalize: bool,
-        image_mean: float | list[float] | None,
-        image_std: float | list[float] | None,
-        disable_grouping: bool | None,
-        return_tensors: str | TensorType | None,
-        **kwargs,
+        image_mean: Optional[Union[float, list[float]]],
+        image_std: Optional[Union[float, list[float]]],
+        disable_grouping: Optional[bool],
+        return_tensors: Optional[Union[str, TensorType]],
     ) -> BatchFeature:
         # Group images by size for batched scaling
         grouped_images, grouped_images_index = group_images_by_shape(images, disable_grouping=disable_grouping)
@@ -93,6 +97,7 @@ class DepthProImageProcessorFast(BaseImageProcessorFast):
             processed_images_grouped[shape] = stacked_images
 
         processed_images = reorder_images(processed_images_grouped, grouped_images_index)
+        processed_images = torch.stack(processed_images, dim=0) if return_tensors else processed_images
 
         return BatchFeature(data={"pixel_values": processed_images}, tensor_type=return_tensors)
 
@@ -100,8 +105,8 @@ class DepthProImageProcessorFast(BaseImageProcessorFast):
     def post_process_depth_estimation(
         self,
         outputs: "DepthProDepthEstimatorOutput",
-        target_sizes: TensorType | list[tuple[int, int]] | None | None = None,
-    ) -> list[dict[str, TensorType]]:
+        target_sizes: Optional[Union[TensorType, list[tuple[int, int]], None]] = None,
+    ) -> dict[str, list[TensorType]]:
         """
         Post-processes the raw depth predictions from the model to generate
         final depth predictions which is caliberated using the field of view if provided

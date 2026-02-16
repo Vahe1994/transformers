@@ -1,3 +1,4 @@
+# coding=utf-8
 # Copyright 2022 Meta Platforms, Inc. and The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,11 +15,13 @@
 """PyTorch RegNet model."""
 
 import math
+from typing import Optional
 
 import torch
+import torch.utils.checkpoint
 from torch import Tensor, nn
+from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 
-from ... import initialization as init
 from ...activations import ACT2FN
 from ...modeling_outputs import (
     BaseModelOutputWithNoAttention,
@@ -41,7 +44,7 @@ class RegNetConvLayer(nn.Module):
         kernel_size: int = 3,
         stride: int = 1,
         groups: int = 1,
-        activation: str | None = "relu",
+        activation: Optional[str] = "relu",
     ):
         super().__init__()
         self.convolution = nn.Conv2d(
@@ -262,24 +265,20 @@ class RegNetPreTrainedModel(PreTrainedModel):
     main_input_name = "pixel_values"
     _no_split_modules = ["RegNetYLayer"]
 
-    @torch.no_grad()
+    # Copied from transformers.models.resnet.modeling_resnet.ResNetPreTrainedModel._init_weights
     def _init_weights(self, module):
         if isinstance(module, nn.Conv2d):
-            init.kaiming_normal_(module.weight, mode="fan_out", nonlinearity="relu")
+            nn.init.kaiming_normal_(module.weight, mode="fan_out", nonlinearity="relu")
         # copied from the `reset_parameters` method of `class Linear(Module)` in `torch`.
         elif isinstance(module, nn.Linear):
-            init.kaiming_uniform_(module.weight, a=math.sqrt(5))
+            nn.init.kaiming_uniform_(module.weight, a=math.sqrt(5))
             if module.bias is not None:
-                fan_in, _ = torch.nn.init._calculate_fan_in_and_fan_out(module.weight)
+                fan_in, _ = nn.init._calculate_fan_in_and_fan_out(module.weight)
                 bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
-                init.uniform_(module.bias, -bound, bound)
+                nn.init.uniform_(module.bias, -bound, bound)
         elif isinstance(module, (nn.BatchNorm2d, nn.GroupNorm)):
-            init.constant_(module.weight, 1)
-            init.constant_(module.bias, 0)
-            if getattr(module, "running_mean", None) is not None:
-                init.zeros_(module.running_mean)
-                init.ones_(module.running_var)
-                init.zeros_(module.num_batches_tracked)
+            nn.init.constant_(module.weight, 1)
+            nn.init.constant_(module.bias, 0)
 
 
 @auto_docstring
@@ -296,11 +295,7 @@ class RegNetModel(RegNetPreTrainedModel):
 
     @auto_docstring
     def forward(
-        self,
-        pixel_values: Tensor,
-        output_hidden_states: bool | None = None,
-        return_dict: bool | None = None,
-        **kwargs,
+        self, pixel_values: Tensor, output_hidden_states: Optional[bool] = None, return_dict: Optional[bool] = None
     ) -> BaseModelOutputWithPoolingAndNoAttention:
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
@@ -350,11 +345,10 @@ class RegNetForImageClassification(RegNetPreTrainedModel):
     @auto_docstring
     def forward(
         self,
-        pixel_values: torch.FloatTensor | None = None,
-        labels: torch.LongTensor | None = None,
-        output_hidden_states: bool | None = None,
-        return_dict: bool | None = None,
-        **kwargs,
+        pixel_values: Optional[torch.FloatTensor] = None,
+        labels: Optional[torch.LongTensor] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
     ) -> ImageClassifierOutputWithNoAttention:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
@@ -372,7 +366,25 @@ class RegNetForImageClassification(RegNetPreTrainedModel):
         loss = None
 
         if labels is not None:
-            loss = self.loss_function(labels, logits, self.config)
+            if self.config.problem_type is None:
+                if self.num_labels == 1:
+                    self.config.problem_type = "regression"
+                elif self.num_labels > 1 and (labels.dtype == torch.long or labels.dtype == torch.int):
+                    self.config.problem_type = "single_label_classification"
+                else:
+                    self.config.problem_type = "multi_label_classification"
+            if self.config.problem_type == "regression":
+                loss_fct = MSELoss()
+                if self.num_labels == 1:
+                    loss = loss_fct(logits.squeeze(), labels.squeeze())
+                else:
+                    loss = loss_fct(logits, labels)
+            elif self.config.problem_type == "single_label_classification":
+                loss_fct = CrossEntropyLoss()
+                loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
+            elif self.config.problem_type == "multi_label_classification":
+                loss_fct = BCEWithLogitsLoss()
+                loss = loss_fct(logits, labels)
 
         if not return_dict:
             output = (logits,) + outputs[2:]

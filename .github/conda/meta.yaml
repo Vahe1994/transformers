@@ -19,6 +19,7 @@ requirements:
     - huggingface_hub
     - packaging
     - filelock
+    - requests
     - tqdm >=4.27
     - sacremoses
     - regex !=2019.12.17
@@ -34,6 +35,7 @@ requirements:
     - huggingface_hub
     - packaging
     - filelock
+    - requests
     - tqdm >=4.27
     - sacremoses
     - regex !=2019.12.17

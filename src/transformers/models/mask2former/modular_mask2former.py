@@ -1,3 +1,4 @@
+# coding=utf-8
 # Copyright 2025 The HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,14 +12,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-import torch
-from torch import nn
+from typing import Optional
 
 from transformers.models.maskformer.image_processing_maskformer_fast import MaskFormerImageProcessorFast
 
 from ...utils import (
     TensorType,
+    is_torch_available,
     logging,
 )
 from .image_processing_mask2former import (
@@ -28,12 +28,17 @@ from .image_processing_mask2former import (
 )
 
 
+if is_torch_available():
+    import torch
+    from torch import nn
+
+
 logger = logging.get_logger(__name__)
 
 
 class Mask2FormerImageProcessorFast(MaskFormerImageProcessorFast):
     def post_process_semantic_segmentation(
-        self, outputs, target_sizes: list[tuple[int, int]] | None = None
+        self, outputs, target_sizes: Optional[list[tuple[int, int]]] = None
     ) -> "torch.Tensor":
         """
         Converts the output of [`Mask2FormerForUniversalSegmentation`] into semantic segmentation maps. Only supports
@@ -93,9 +98,9 @@ class Mask2FormerImageProcessorFast(MaskFormerImageProcessorFast):
         threshold: float = 0.5,
         mask_threshold: float = 0.5,
         overlap_mask_area_threshold: float = 0.8,
-        target_sizes: list[tuple[int, int]] | None = None,
-        return_coco_annotation: bool | None = False,
-        return_binary_maps: bool | None = False,
+        target_sizes: Optional[list[tuple[int, int]]] = None,
+        return_coco_annotation: Optional[bool] = False,
+        return_binary_maps: Optional[bool] = False,
     ) -> list[dict]:
         """
         Converts the output of [`Mask2FormerForUniversalSegmentationOutput`] into instance segmentation predictions.
@@ -214,8 +219,8 @@ class Mask2FormerImageProcessorFast(MaskFormerImageProcessorFast):
         threshold: float = 0.5,
         mask_threshold: float = 0.5,
         overlap_mask_area_threshold: float = 0.8,
-        label_ids_to_fuse: set[int] | None = None,
-        target_sizes: list[tuple[int, int]] | None = None,
+        label_ids_to_fuse: Optional[set[int]] = None,
+        target_sizes: Optional[list[tuple[int, int]]] = None,
     ) -> list[dict]:
         """
         Converts the output of [`Mask2FormerForUniversalSegmentationOutput`] into image panoptic segmentation
@@ -302,6 +307,9 @@ class Mask2FormerImageProcessorFast(MaskFormerImageProcessorFast):
 
             results.append({"segmentation": segmentation, "segments_info": segments})
         return results
+
+    def post_process_segmentation():
+        raise NotImplementedError("Segmentation post-processing is not implemented for Mask2Former yet.")
 
 
 __all__ = ["Mask2FormerImageProcessorFast"]

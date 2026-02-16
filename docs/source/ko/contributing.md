@@ -162,7 +162,7 @@ python src/transformers/commands/transformers_cli.py env
    🤗 Transformers는 `black`과 `ruff`를 사용하여 소스 코드의 형식을 일관되게 유지합니다. 변경 사항을 적용한 후에는 다음 명령으로 자동으로 스타일 교정 및 코드 검증을 수행하세요:
 
    ```bash
-   make style
+   make fixup
    ```
 
    이것은 또한 작업 중인 PR에서 수정한 파일에서만 작동하도록 최적화되어 있습니다.
@@ -175,9 +175,14 @@ python src/transformers/commands/transformers_cli.py env
 
    🤗 Transformers는 또한 `ruff`와 몇 가지 사용자 정의 스크립트를 사용하여 코딩 실수를 확인합니다. CI를 통해 품질 관리가 수행되지만, 다음 명령으로 동일한 검사를 실행할 수 있습니다:
 
+   ```bash
+   make quality
+   ```
+
+   마지막으로, 새 모델을 추가할 때 일부 파일을 업데이트하는 것을 잊지 않도록 하기 위한 많은 스크립트가 있습니다. 다음 명령으로 이러한 스크립트를 실행할 수 있습니다:
 
    ```bash
-   make check-repo
+   make repo-consistency
    ```
 
    이러한 검사에 대해 자세히 알아보고 관련 문제를 해결하는 방법은 [Pull Request에 대한 검사](https://huggingface.co/docs/transformers/pr_checks) 가이드를 확인하세요.

@@ -341,7 +341,7 @@ def main():
 
     print(f"max_absolute_diff = {max_absolute_diff}")
     success = torch.allclose(hf_output, orig_model_output, atol=1e-3)
-    print("Do both models output the same tensors?", "[PASS]" if success else "[FAIL]")
+    print("Do both models output the same tensors?", "🔥" if success else "💩")
     if not success:
         raise Exception("Something went wRoNg")
 

@@ -1,3 +1,4 @@
+# coding=utf-8
 # Copyright 2024 The HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,9 +22,9 @@ Notebook to get the original logits: https://colab.research.google.com/drive/1QD
 import argparse
 import os
 import re
-from io import BytesIO
+from typing import Optional
 
-import httpx
+import requests
 import torch
 from huggingface_hub import hf_hub_download
 from PIL import Image
@@ -160,7 +161,7 @@ def get_config(model_name):
     return config
 
 
-def convert_old_keys_to_new_keys(state_dict_keys: dict | None = None):
+def convert_old_keys_to_new_keys(state_dict_keys: Optional[dict] = None):
     """
     This function should be applied only once, on the concatenated keys to efficiently rename using
     the key mappings.
@@ -181,8 +182,7 @@ def convert_old_keys_to_new_keys(state_dict_keys: dict | None = None):
 # We will verify our results on a COCO image
 def prepare_img():
     url = "http://images.cocodataset.org/val2017/000000000139.jpg"
-    with httpx.stream("GET", url) as response:
-        image = Image.open(BytesIO(response.read()))
+    image = Image.open(requests.get(url, stream=True).raw)
     return image
 
 
@@ -410,9 +410,7 @@ def main():
         "--pytorch_dump_folder_path", default=None, type=str, help="Path to store the converted model."
     )
     parser.add_argument(
-        "--push_to_hub",
-        action="store_true",
-        help="Whether or not to push the converted model to the Hugging Face hub.",
+        "--push_to_hub", action="store_true", help="Whether or not to push the converted model to the 🤗 hub."
     )
     parser.add_argument(
         "--check_logits", action="store_false", help="Whether or not to verify the logits of the converted model."

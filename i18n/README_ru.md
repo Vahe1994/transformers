@@ -47,11 +47,9 @@ limitations under the License.
         <a href="https://github.com/huggingface/transformers/blob/main/i18n/README_te.md">తెలుగు</a> |
         <a href="https://github.com/huggingface/transformers/blob/main/i18n/README_fr.md">Français</a> |
         <a href="https://github.com/huggingface/transformers/blob/main/i18n/README_de.md">Deutsch</a> |
-        <a href="https://github.com/huggingface/transformers/blob/main/i18n/README_it.md">Italiano</a> |
         <a href="https://github.com/huggingface/transformers/blob/main/i18n/README_vi.md">Tiếng Việt</a> |
         <a href="https://github.com/huggingface/transformers/blob/main/i18n/README_ar.md">العربية</a> |
         <a href="https://github.com/huggingface/transformers/blob/main/i18n/README_ur.md">اردو</a> |
-        <a href="https://github.com/huggingface/transformers/blob/main/i18n/README_bn.md">বাংলা</a> |
     <p>
 </h4>
 
@@ -246,7 +244,7 @@ Hugging Face Hub. Мы хотим, чтобы Transformers позволил ра
 
 ### С помощью pip
 
-Данный репозиторий протестирован на Python 3.10+ и PyTorch 2.4+.
+Данный репозиторий протестирован на Python 3.9+, Flax 0.4.1+, PyTorch 2.1+ и TensorFlow 2.6+.
 
 Устанавливать 🤗 Transformers следует в [виртуальной среде](https://docs.python.org/3/library/venv.html). Если вы не знакомы с виртуальными средами Python, ознакомьтесь с [руководством пользователя](https://packaging.python.org/guides/installing-using-pip-and-virtual-environments/).
 

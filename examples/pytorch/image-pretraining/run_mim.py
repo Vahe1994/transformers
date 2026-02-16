@@ -25,6 +25,7 @@ import logging
 import os
 import sys
 from dataclasses import dataclass, field
+from typing import Optional
 
 import numpy as np
 import torch
@@ -43,7 +44,8 @@ from transformers import (
     Trainer,
     TrainingArguments,
 )
-from transformers.utils import check_min_version
+from transformers.trainer_utils import get_last_checkpoint
+from transformers.utils import check_min_version, send_example_telemetry
 from transformers.utils.versions import require_version
 
 
@@ -54,7 +56,7 @@ Any model supported by the AutoModelForMaskedImageModeling API can be used.
 logger = logging.getLogger(__name__)
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-check_min_version("4.57.0.dev0")
+check_min_version("4.55.0.dev0")
 
 require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/image-pretraining/requirements.txt")
 
@@ -70,19 +72,19 @@ class DataTrainingArguments:
     specify them on the command line.
     """
 
-    dataset_name: str | None = field(
+    dataset_name: Optional[str] = field(
         default="cifar10", metadata={"help": "Name of a dataset from the datasets package"}
     )
-    dataset_config_name: str | None = field(
+    dataset_config_name: Optional[str] = field(
         default=None, metadata={"help": "The configuration name of the dataset to use (via the datasets library)."}
     )
-    image_column_name: str | None = field(
+    image_column_name: Optional[str] = field(
         default=None,
         metadata={"help": "The column name of the images in the files. If not set, will try to use 'image' or 'img'."},
     )
-    train_dir: str | None = field(default=None, metadata={"help": "A folder containing the training data."})
-    validation_dir: str | None = field(default=None, metadata={"help": "A folder containing the validation data."})
-    train_val_split: float | None = field(
+    train_dir: Optional[str] = field(default=None, metadata={"help": "A folder containing the training data."})
+    validation_dir: Optional[str] = field(default=None, metadata={"help": "A folder containing the validation data."})
+    train_val_split: Optional[float] = field(
         default=0.15, metadata={"help": "Percent to split off of train for validation."}
     )
     mask_patch_size: int = field(default=32, metadata={"help": "The size of the square patches to use for masking."})
@@ -90,7 +92,7 @@ class DataTrainingArguments:
         default=0.6,
         metadata={"help": "Percentage of patches to mask."},
     )
-    max_train_samples: int | None = field(
+    max_train_samples: Optional[int] = field(
         default=None,
         metadata={
             "help": (
@@ -99,7 +101,7 @@ class DataTrainingArguments:
             )
         },
     )
-    max_eval_samples: int | None = field(
+    max_eval_samples: Optional[int] = field(
         default=None,
         metadata={
             "help": (
@@ -134,14 +136,14 @@ class ModelArguments:
             )
         },
     )
-    model_type: str | None = field(
+    model_type: Optional[str] = field(
         default=None,
         metadata={"help": "If training from scratch, pass a model type from the list: " + ", ".join(MODEL_TYPES)},
     )
-    config_name_or_path: str | None = field(
+    config_name_or_path: Optional[str] = field(
         default=None, metadata={"help": "Pretrained config name or path if not the same as model_name"}
     )
-    config_overrides: str | None = field(
+    config_overrides: Optional[str] = field(
         default=None,
         metadata={
             "help": (
@@ -150,7 +152,7 @@ class ModelArguments:
             )
         },
     )
-    cache_dir: str | None = field(
+    cache_dir: Optional[str] = field(
         default=None,
         metadata={"help": "Where do you want to store (cache) the pretrained models/datasets downloaded from the hub"},
     )
@@ -178,7 +180,7 @@ class ModelArguments:
             )
         },
     )
-    image_size: int | None = field(
+    image_size: Optional[int] = field(
         default=None,
         metadata={
             "help": (
@@ -186,7 +188,7 @@ class ModelArguments:
             )
         },
     )
-    patch_size: int | None = field(
+    patch_size: Optional[int] = field(
         default=None,
         metadata={
             "help": (
@@ -194,7 +196,7 @@ class ModelArguments:
             )
         },
     )
-    encoder_stride: int | None = field(
+    encoder_stride: Optional[int] = field(
         default=None,
         metadata={"help": "Stride to use for the encoder."},
     )
@@ -255,6 +257,10 @@ def main():
     else:
         model_args, data_args, training_args = parser.parse_args_into_dataclasses()
 
+    # Sending telemetry. Tracking the example usage helps us better allocate resources to maintain them. The
+    # information sent is the one passed as arguments along with your Python/PyTorch versions.
+    send_example_telemetry("run_mim", model_args, data_args)
+
     # Setup logging
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
@@ -274,10 +280,25 @@ def main():
 
     # Log on each process the small summary:
     logger.warning(
-        f"Process rank: {training_args.local_process_index}, device: {training_args.device}, n_gpu: {training_args.n_gpu}, "
+        f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}, "
         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, 16-bits training: {training_args.fp16}"
     )
     logger.info(f"Training/evaluation parameters {training_args}")
+
+    # Detecting last checkpoint.
+    last_checkpoint = None
+    if os.path.isdir(training_args.output_dir) and training_args.do_train and not training_args.overwrite_output_dir:
+        last_checkpoint = get_last_checkpoint(training_args.output_dir)
+        if last_checkpoint is None and len(os.listdir(training_args.output_dir)) > 0:
+            raise ValueError(
+                f"Output directory ({training_args.output_dir}) already exists and is not empty. "
+                "Use --overwrite_output_dir to overcome."
+            )
+        elif last_checkpoint is not None and training_args.resume_from_checkpoint is None:
+            logger.info(
+                f"Checkpoint detected, resuming training at {last_checkpoint}. To avoid this behavior, change "
+                "the `--output_dir` or add `--overwrite_output_dir` to train from scratch."
+            )
 
     # Initialize our dataset.
     ds = load_dataset(
@@ -439,6 +460,8 @@ def main():
         checkpoint = None
         if training_args.resume_from_checkpoint is not None:
             checkpoint = training_args.resume_from_checkpoint
+        elif last_checkpoint is not None:
+            checkpoint = last_checkpoint
         train_result = trainer.train(resume_from_checkpoint=checkpoint)
         trainer.save_model()
         trainer.log_metrics("train", train_result.metrics)

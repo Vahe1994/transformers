@@ -20,27 +20,50 @@ rendered properly in your Markdown viewer.
 
 # Installation
 
-Transformers works with [PyTorch](https://pytorch.org/get-started/locally/). It has been tested on Python 3.10+ and PyTorch 2.4+.
+Transformers works with [PyTorch](https://pytorch.org/get-started/locally/), [TensorFlow 2.0](https://www.tensorflow.org/install/pip), and [Flax](https://flax.readthedocs.io/en/latest/). It has been tested on Python 3.9+, PyTorch 2.1+, TensorFlow 2.6+, and Flax 0.4.1+.
 
 ## Virtual environment
 
-[uv](https://docs.astral.sh/uv/) is an extremely fast Rust-based Python package and project manager and requires a [virtual environment](https://docs.astral.sh/uv/pip/environments/) by default to manage different projects and avoids compatibility issues between dependencies.
+A virtual environment helps manage different projects and avoids compatibility issues between dependencies. Take a look at the [Install packages in a virtual environment using pip and venv](https://packaging.python.org/en/latest/guides/installing-using-pip-and-virtual-environments/) guide if you're unfamiliar with Python virtual environments.
 
-It can be used as a drop-in replacement for [pip](https://pip.pypa.io/en/stable/), but if you prefer to use pip, remove `uv` from the commands below.
+<hfoptions id="virtual">
+<hfoption id="venv">
 
-> [!TIP]
-> Refer to the uv [installation](https://docs.astral.sh/uv/guides/install-python/) docs to install uv.
+Create and activate a virtual environment in your project directory with [venv](https://docs.python.org/3/library/venv.html).
 
-Create a virtual environment to install Transformers in.
+```bash
+python -m venv .env
+source .env/bin/activate
+```
+
+</hfoption>
+<hfoption id="uv">
+
+[uv](https://docs.astral.sh/uv/) is a fast Rust-based Python package and project manager.
 
 ```bash
 uv venv .env
 source .env/bin/activate
 ```
 
+</hfoption>
+</hfoptions>
+
 ## Python
 
-Install Transformers with the following command.
+You can install Transformers with pip or uv.
+
+<hfoptions id="install">
+<hfoption id="pip">
+
+[pip](https://pip.pypa.io/en/stable/) is a package installer for Python. Install Transformers with pip in your newly created virtual environment.
+
+```bash
+pip install transformers
+```
+
+</hfoption>
+<hfoption id="uv">
 
 [uv](https://docs.astral.sh/uv/) is a fast Rust-based Python package and project manager.
 
@@ -48,7 +71,10 @@ Install Transformers with the following command.
 uv pip install transformers
 ```
 
-For GPU acceleration, install the appropriate CUDA drivers for [PyTorch](https://pytorch.org/get-started/locally).
+</hfoption>
+</hfoptions>
+
+For GPU acceleration, install the appropriate CUDA drivers for [PyTorch](https://pytorch.org/get-started/locally) and [TensorFlow](https://www.tensorflow.org/install/pip).
 
 Run the command below to check if your system detects an NVIDIA GPU.
 
@@ -56,12 +82,43 @@ Run the command below to check if your system detects an NVIDIA GPU.
 nvidia-smi
 ```
 
-To install a CPU-only version of Transformers, run the following command.
+To install a CPU-only version of Transformers and a machine learning framework, run the following command.
+
+<hfoptions id="cpu-only">
+<hfoption id="PyTorch">
 
 ```bash
-uv pip install torch --index-url https://download.pytorch.org/whl/cpu
-uv pip install transformers
+pip install 'transformers[torch]'
+uv pip install 'transformers[torch]'
 ```
+
+</hfoption>
+<hfoption id="TensorFlow">
+
+For Apple M1 hardware, you need to install CMake and pkg-config first.
+
+```bash
+brew install cmake
+brew install pkg-config
+```
+
+Install TensorFlow 2.0.
+
+```bash
+pip install 'transformers[tf-cpu]'
+uv pip install 'transformers[tf-cpu]'
+```
+
+</hfoption>
+<hfoption id="Flax">
+
+```bash
+pip install 'transformers[flax]'
+uv pip install 'transformers[flax]'
+```
+
+</hfoption>
+</hfoptions>
 
 Test whether the install was successful with the following command. It should return a label and score for the provided text.
 
@@ -79,7 +136,7 @@ The downside is that the latest version may not always be stable. If you encount
 Install from source with the following command.
 
 ```bash
-uv pip install git+https://github.com/huggingface/transformers
+pip install git+https://github.com/huggingface/transformers
 ```
 
 Check if the install was successful with the command below. It should return a label and score for the provided text.
@@ -96,7 +153,7 @@ An [editable install](https://pip.pypa.io/en/stable/topics/local-project-install
 ```bash
 git clone https://github.com/huggingface/transformers.git
 cd transformers
-uv pip install -e .
+pip install -e .
 ```
 
 > [!WARNING]
@@ -127,13 +184,15 @@ When you load a pretrained model with [`~PreTrainedModel.from_pretrained`], the 
 
 Every time you load a model, it checks whether the cached model is up-to-date. If it's the same, then the local model is loaded. If it's not the same, the newer model is downloaded and cached.
 
-The default directory given by the shell environment variable `HF_HUB_CACHE` is `~/.cache/huggingface/hub`. On Windows, the default directory is `C:\Users\username\.cache\huggingface\hub`.
+The default directory given by the shell environment variable `TRANSFORMERS_CACHE` is `~/.cache/huggingface/hub`. On Windows, the default directory is `C:\Users\username\.cache\huggingface\hub`.
 
 Cache a model in a different directory by changing the path in the following shell environment variables (listed by priority).
 
-1. [HF_HUB_CACHE](https://hf.co/docs/huggingface_hub/package_reference/environment_variables#hfhubcache) (default)
+1. [HF_HUB_CACHE](https://hf.co/docs/huggingface_hub/package_reference/environment_variables#hfhubcache) or `TRANSFORMERS_CACHE` (default)
 2. [HF_HOME](https://hf.co/docs/huggingface_hub/package_reference/environment_variables#hfhome)
 3. [XDG_CACHE_HOME](https://hf.co/docs/huggingface_hub/package_reference/environment_variables#xdgcachehome) + `/huggingface` (only if `HF_HOME` is not set)
+
+Older versions of Transformers uses the shell environment variables `PYTORCH_TRANSFORMERS_CACHE` or `PYTORCH_PRETRAINED_BERT_CACHE`. You should keep these unless you specify the newer shell environment variable `TRANSFORMERS_CACHE`.
 
 ### Offline mode
 

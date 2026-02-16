@@ -13,7 +13,6 @@ specific language governing permissions and limitations under the License.
 rendered properly in your Markdown viewer.
 
 -->
-*This model was released on 2024-03-08 and added to Hugging Face Transformers on 2025-07-25.*
 
 <div style="float: right;">
     <div class="flex flex-wrap space-x-1">
@@ -25,7 +24,7 @@ rendered properly in your Markdown viewer.
 
 # DeepseekVL
 
-[Deepseek-VL](https://huggingface.co/papers/2403.05525) was introduced by the DeepSeek AI team. It is a vision-language model (VLM) designed to process both text and images for generating contextually relevant responses. The model leverages [LLaMA](./llama) as its text encoder, while [SigLip](./siglip) is used for encoding images.
+[Deepseek-VL](https://arxiv.org/abs/2403.05525) was introduced by the DeepSeek AI team. It is a vision-language model (VLM) designed to process both text and images for generating contextually relevant responses. The model leverages [LLaMA](./llama) as its text encoder, while [SigLip](./siglip) is used for encoding images.
 
 You can find all the original Deepseek-VL checkpoints under the [DeepSeek-community](https://huggingface.co/deepseek-community) organization.
 
@@ -45,7 +44,7 @@ pipe = pipeline(
     task="image-text-to-text",
     model="deepseek-community/deepseek-vl-1.3b-chat",
     device=0,
-    dtype=torch.float16
+    torch_dtype=torch.float16
 )
 
 messages = [
@@ -63,7 +62,6 @@ messages = [
 
 pipe(text=messages, max_new_tokens=20, return_full_text=False)
 ```
-
 </hfoption>
 
 <hfoption id="AutoModel">
@@ -74,7 +72,7 @@ from transformers import DeepseekVLForConditionalGeneration, AutoProcessor
 
 model = DeepseekVLForConditionalGeneration.from_pretrained(
     "deepseek-community/deepseek-vl-1.3b-chat",
-    dtype=torch.float16,
+    torch_dtype=torch.float16,
     device_map="auto",
     attn_implementation="sdpa"
 )
@@ -116,7 +114,6 @@ output_text = processor.batch_decode(
 
 print(output_text)
 ```
-
 </hfoption>
 </hfoptions>
 
@@ -135,23 +132,21 @@ quantization_config = TorchAoConfig(
 
 model = DeepseekVLForConditionalGeneration.from_pretrained(
     "deepseek-community/deepseek-vl-1.3b-chat",
-    dtype=torch.bfloat16,
+    torch_dtype=torch.bfloat16,
     device_map="auto",
     quantization_config=quantization_config
 )
 ```
-
 ### Notes
 
 - Do inference with multiple images in a single conversation.
-
     ```py
     import torch
     from transformers import DeepseekVLForConditionalGeneration, AutoProcessor
 
     model = DeepseekVLForConditionalGeneration.from_pretrained(
         "deepseek-community/deepseek-vl-1.3b-chat",
-        dtype=torch.float16,
+        torch_dtype=torch.float16,
         device_map="auto",
         attn_implementation="sdpa"
     )
@@ -209,7 +204,6 @@ model = DeepseekVLForConditionalGeneration.from_pretrained(
 ## DeepseekVLProcessor
 
 [[autodoc]] DeepseekVLProcessor
-    - __call__
 
 ## DeepseekVLImageProcessor
 
@@ -223,7 +217,6 @@ model = DeepseekVLForConditionalGeneration.from_pretrained(
 
 [[autodoc]] DeepseekVLModel
     - forward
-    - get_image_features
 
 ## DeepseekVLForConditionalGeneration
 

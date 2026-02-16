@@ -1,3 +1,4 @@
+# coding=utf-8
 # Copyright 2023 The HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,9 +19,8 @@ URL: https://github.com/facebookresearch/ConvNeXt"""
 import argparse
 import json
 import os
-from io import BytesIO
 
-import httpx
+import requests
 import torch
 from huggingface_hub import hf_hub_download
 from PIL import Image
@@ -116,9 +116,8 @@ def rename_key(name):
 # We will verify our results on an image of cute cats
 def prepare_img():
     url = "http://images.cocodataset.org/val2017/000000039769.jpg"
-    with httpx.stream("GET", url) as response:
-        image = Image.open(BytesIO(response.read()))
-    return image
+    im = Image.open(requests.get(url, stream=True).raw)
+    return im
 
 
 def convert_preprocessor(checkpoint_url):

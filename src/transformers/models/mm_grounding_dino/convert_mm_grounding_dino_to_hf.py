@@ -1,3 +1,4 @@
+# coding=utf-8
 # Copyright 2025 The HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,9 +14,8 @@
 # limitations under the License.
 import argparse
 import re
-from io import BytesIO
 
-import httpx
+import requests
 import torch
 from PIL import Image
 
@@ -420,9 +420,8 @@ def convert_mm_to_hf_state(original_state: dict, hf_cfg: MMGroundingDinoConfig) 
 
 
 def prepare_test_inputs():
-    url = "http://images.cocodataset.org/val2017/000000039769.jpg"
-    with httpx.stream("GET", url) as response:
-        image = Image.open(BytesIO(response.read()))
+    image_url = "http://images.cocodataset.org/val2017/000000039769.jpg"
+    image = Image.open(requests.get(image_url, stream=True).raw)
     text = [["cat", "remote"]]
     return image, text
 

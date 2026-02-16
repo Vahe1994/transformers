@@ -223,7 +223,7 @@ class DiaFeatureExtractionTest(SequenceFeatureExtractionTestMixin, unittest.Test
         # force no pad
         with self.assertRaisesRegex(
             ValueError,
-            r"Unable to convert output[\s\S]*padding=True",
+            "^Unable to create tensor, you should probably activate padding with 'padding=True' to have batched tensors with the same length.$",
         ):
             truncated_outputs = feature_extractor(input_audio, padding=False, return_tensors="pt").input_values
 

@@ -13,7 +13,6 @@ specific language governing permissions and limitations under the License.
 rendered properly in your Markdown viewer.
 
 -->
-*This model was released on 2024-12-18 and added to Hugging Face Transformers on 2025-07-15.*
 
 <div style="float: right;">
   <div class="flex flex-wrap space-x-1">
@@ -36,7 +35,7 @@ You can find all the original ModernBERT Decoder checkpoints under the [jhu-clsp
 >
 > Click on the ModernBERT Decoder models in the right sidebar for more examples of how to apply ModernBERT Decoder to different text generation tasks.
 
-The example below demonstrates how to use ModernBERT Decoder for text generation with [`Pipeline`], [`AutoModel`] (with and without quantization), and from the command line.
+The example below demonstrates how to use ModernBERT Decoder for text generation with [`Pipeline`], [`AutoModel`] (with and without quantization), and from the command line. 
 
 <hfoptions id="usage">
 <hfoption id="Pipeline">
@@ -48,7 +47,7 @@ from transformers import pipeline
 generator = pipeline(
     task="text-generation",
     model="jhu-clsp/ettin-decoder-17m",
-    dtype=torch.float16,
+    torch_dtype=torch.float16,
     device=0
 )
 generator("The future of artificial intelligence is", max_length=50, num_return_sequences=1)
@@ -57,7 +56,7 @@ generator("The future of artificial intelligence is", max_length=50, num_return_
 classifier = pipeline(
     task="text-classification",
     model="jhu-clsp/ettin-decoder-17m",
-    dtype=torch.float16,
+    torch_dtype=torch.float16,
     device=0
 )
 classifier("This movie is really great!")
@@ -73,12 +72,12 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 tokenizer = AutoTokenizer.from_pretrained("jhu-clsp/ettin-decoder-17m")
 model = AutoModelForCausalLM.from_pretrained(
     "jhu-clsp/ettin-decoder-17m",
-    dtype=torch.float16,
+    torch_dtype=torch.float16,
     device_map="auto",
 )
 
 prompt = "The future of artificial intelligence is"
-inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+inputs = tokenizer(prompt, return_tensors="pt").to("cuda")
 
 with torch.no_grad():
     outputs = model.generate(
@@ -98,13 +97,13 @@ from transformers import AutoModelForSequenceClassification
 
 classifier_model = AutoModelForSequenceClassification.from_pretrained(
     "jhu-clsp/ettin-decoder-17m",
-    dtype=torch.float16,
+    torch_dtype=torch.float16,
     device_map="auto",
     num_labels=2
 )
 
 text = "This movie is really great!"
-inputs = tokenizer(text, return_tensors="pt").to(classifier_model.device)
+inputs = tokenizer(text, return_tensors="pt").to("cuda")
 
 with torch.no_grad():
     outputs = classifier_model(**inputs)
@@ -119,7 +118,7 @@ print(f"Prediction probabilities: {predictions}")
 
 <hfoption id="AutoModel (w/quantization)">
 
-```py
+```
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
@@ -130,13 +129,13 @@ quantization_config = BitsAndBytesConfig(
 tokenizer = AutoTokenizer.from_pretrained("jhu-clsp/ettin-decoder-1b")
 model = AutoModelForCausalLM.from_pretrained(
     "jhu-clsp/ettin-decoder-1b",
-    dtype=torch.float16,
+    torch_dtype=torch.float16,
     device_map="auto",
     quantization_config=quantization_config
 )
 
 prompt = "The future of artificial intelligence is"
-inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+inputs = tokenizer(prompt, return_tensors="pt").to("cuda")
 
 with torch.no_grad():
     outputs = model.generate(
@@ -151,7 +150,6 @@ with torch.no_grad():
 generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
 print(f"Generated text: {generated_text}")
 ```
-
 </hfoption>
 
 <hfoption id="transformers CLI">
@@ -163,9 +161,13 @@ echo "The future of artificial intelligence is" | transformers run --task text-g
 </hfoption>
 </hfoptions>
 
+
 ## ModernBertDecoderConfig
 
 [[autodoc]] ModernBertDecoderConfig
+
+<frameworkcontent>
+<pt>
 
 ## ModernBertDecoderModel
 
@@ -181,3 +183,6 @@ echo "The future of artificial intelligence is" | transformers run --task text-g
 
 [[autodoc]] ModernBertDecoderForSequenceClassification
     - forward
+
+</pt>
+</frameworkcontent>

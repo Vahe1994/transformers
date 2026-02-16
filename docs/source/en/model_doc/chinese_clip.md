@@ -13,7 +13,6 @@ specific language governing permissions and limitations under the License.
 rendered properly in your Markdown viewer.
 
 -->
-*This model was released on 2022-11-02 and added to Hugging Face Transformers on 2022-12-01.*
 
 # Chinese-CLIP
 
@@ -76,6 +75,7 @@ Currently, following scales of pretrained Chinese-CLIP models are available on ð
 ## ChineseCLIPConfig
 
 [[autodoc]] ChineseCLIPConfig
+    - from_text_vision_configs
 
 ## ChineseCLIPTextConfig
 
@@ -95,10 +95,13 @@ Currently, following scales of pretrained Chinese-CLIP models are available on ð
 [[autodoc]] ChineseCLIPImageProcessorFast
     - preprocess
 
+## ChineseCLIPFeatureExtractor
+
+[[autodoc]] ChineseCLIPFeatureExtractor
+
 ## ChineseCLIPProcessor
 
 [[autodoc]] ChineseCLIPProcessor
-    - __call__
 
 ## ChineseCLIPModel
 

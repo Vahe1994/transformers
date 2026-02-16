@@ -16,14 +16,13 @@
 import unittest
 
 import numpy as np
+import requests
 from datasets import load_dataset
 
-from transformers.image_utils import load_image
 from transformers.testing_utils import require_torch, require_vision
 from transformers.utils import is_torch_available, is_torchvision_available, is_vision_available
 
 from ...test_image_processing_common import ImageProcessingTestMixin, prepare_image_inputs
-from ...test_processing_common import url_to_local_path
 
 
 if is_torch_available():
@@ -262,7 +261,7 @@ class EomtImageProcessingTest(ImageProcessingTestMixin, unittest.TestCase):
         processor = self.image_processing_class(**self.image_processor_dict)
         # Set longest_edge to None to test for semantic segmentatiom.
         processor.size = {"shortest_edge": 18, "longest_edge": None}
-        image = load_image(url_to_local_path("http://images.cocodataset.org/val2017/000000039769.jpg"))
+        image = Image.open(requests.get("http://images.cocodataset.org/val2017/000000039769.jpg", stream=True).raw)
 
         inputs = processor(images=image, do_split_image=True, return_tensors="pt")
         patch_offsets = inputs["patch_offsets"]
@@ -277,7 +276,7 @@ class EomtImageProcessingTest(ImageProcessingTestMixin, unittest.TestCase):
 
     def test_post_process_panoptic_segmentation(self):
         processor = self.image_processing_class(**self.image_processor_dict)
-        image = load_image(url_to_local_path("http://images.cocodataset.org/val2017/000000039769.jpg"))
+        image = Image.open(requests.get("http://images.cocodataset.org/val2017/000000039769.jpg", stream=True).raw)
 
         original_sizes = [image.size[::-1], image.size[::-1]]
 
@@ -294,7 +293,7 @@ class EomtImageProcessingTest(ImageProcessingTestMixin, unittest.TestCase):
 
     def test_post_process_instance_segmentation(self):
         processor = self.image_processing_class(**self.image_processor_dict)
-        image = load_image(url_to_local_path("http://images.cocodataset.org/val2017/000000039769.jpg"))
+        image = Image.open(requests.get("http://images.cocodataset.org/val2017/000000039769.jpg", stream=True).raw)
 
         original_sizes = [image.size[::-1], image.size[::-1]]
 

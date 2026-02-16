@@ -1,3 +1,4 @@
+# coding=utf-8
 # Copyright 2023 Authors: Wenhai Wang, Enze Xie, Xiang Li, Deng-Ping Fan,
 # Kaitao Song, Ding Liang, Tong Lu, Ping Luo, Ling Shao and The HuggingFace Inc. team.
 # All rights reserved.
@@ -16,10 +17,9 @@
 """Convert PvtV2 checkpoints from the original library."""
 
 import argparse
-from io import BytesIO
 from pathlib import Path
 
-import httpx
+import requests
 import torch
 from PIL import Image
 
@@ -176,9 +176,8 @@ def rename_key(dct, old, new):
 # We will verify our results on an image of cute cats
 def prepare_img():
     url = "http://images.cocodataset.org/val2017/000000039769.jpg"
-    with httpx.stream("GET", url) as response:
-        image = Image.open(BytesIO(response.read()))
-    return image
+    im = Image.open(requests.get(url, stream=True).raw)
+    return im
 
 
 @torch.no_grad()

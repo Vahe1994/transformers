@@ -39,40 +39,41 @@ members/contributors who may be interested in your PR.
 
 Models:
 
-- text models: @ArthurZucker @Cyrilvallez
-- vision models: @yonigozlan @molbap
-- audio models: @eustlb @ebezzam @vasqu
-- multimodal models: @zucchini-nlp
+- text models: @ArthurZucker
+- vision models: @amyeroberts, @qubvel
+- speech models: @eustlb
 - graph models: @clefourrier
 
 Library:
 
+- flax: @gante and @Rocketknight1
 - generate: @zucchini-nlp (visual-language models) or @gante (all others)
-- continuous batching: @remi-or @ArthurZucker @McPatate
 - pipelines: @Rocketknight1
-- tokenizers: @ArthurZucker and @itazap
-- trainer: @SunMarc
-- attention: @vasqu @ArthurZucker @CyrilVallez
-- model loading (from pretrained, etc): @CyrilVallez
-- distributed: @3outeille @ArthurZucker
-- CIs: @ydshieh
+- tensorflow: @gante and @Rocketknight1
+- tokenizers: @ArthurZucker
+- trainer: @zach-huggingface, @SunMarc and @qgallouedec
+- chat templates: @Rocketknight1
 
 Integrations:
 
+- deepspeed: HF Trainer/Accelerate: @SunMarc @zach-huggingface
 - ray/raytune: @richardliaw, @amogkam
 - Big Model Inference: @SunMarc
-- quantization: @SunMarc @MekkCyber
-- kernels: @MekkCyber @drbh
-- peft: @BenjaminBossan @githubnemo
-
-Devices/Backends:
-
-- AMD ROCm: @ivarflakstad
-- Intel XPU: @IlyasMoutawwakil
-- Ascend NPU: @ivarflakstad 
+- quantization (bitsandbytes, autogpt): @SunMarc @MekkCyber
 
 Documentation: @stevhliu
 
-Research projects are not maintained and should be taken as is.
+HF projects:
+
+- accelerate: [different repo](https://github.com/huggingface/accelerate)
+- datasets: [different repo](https://github.com/huggingface/datasets)
+- diffusers: [different repo](https://github.com/huggingface/diffusers)
+- rust tokenizers: [different repo](https://github.com/huggingface/tokenizers)
+
+Maintained examples (not research project or legacy):
+
+- Flax: @Rocketknight1
+- PyTorch: See Models above and tag the person corresponding to the modality of the example.
+- TensorFlow: @Rocketknight1
 
  -->

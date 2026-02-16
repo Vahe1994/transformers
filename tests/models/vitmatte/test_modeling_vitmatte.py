@@ -25,6 +25,7 @@ from transformers.testing_utils import (
     torch_device,
 )
 from transformers.utils import is_torch_available, is_vision_available
+from transformers.utils.import_utils import get_torch_major_and_minor_version
 
 from ...test_configuration_common import ConfigTester
 from ...test_modeling_common import ModelTesterMixin, floats_tensor
@@ -138,7 +139,12 @@ class VitMatteModelTest(ModelTesterMixin, PipelineTesterMixin, unittest.TestCase
     all_model_classes = (VitMatteForImageMatting,) if is_torch_available() else ()
     pipeline_model_mapping = {}
 
+    fx_compatible = False
+    test_pruning = False
     test_resize_embeddings = False
+    test_head_masking = False
+    test_torch_exportable = True
+    test_torch_exportable_strictly = get_torch_major_and_minor_version() != "2.7"
 
     def setUp(self):
         self.model_tester = VitMatteModelTester(self)
@@ -157,20 +163,24 @@ class VitMatteModelTest(ModelTesterMixin, PipelineTesterMixin, unittest.TestCase
     def test_inputs_embeds(self):
         pass
 
-    @unittest.skip(reason="This module does not support standalone training")
+    @unittest.skip(reason="Training is not yet supported")
     def test_training(self):
         pass
 
-    @unittest.skip(reason="This module does not support standalone training")
+    @unittest.skip(reason="Training is not yet supported")
     def test_training_gradient_checkpointing(self):
         pass
 
-    @unittest.skip(reason="This module does not support standalone training")
-    def test_training_gradient_checkpointing_use_reentrant_false(self):
+    @unittest.skip(
+        reason="This architecture seem to not compute gradients properly when using GC, check: https://github.com/huggingface/transformers/pull/27124"
+    )
+    def test_training_gradient_checkpointing_use_reentrant(self):
         pass
 
-    @unittest.skip(reason="This module does not support standalone training")
-    def test_training_gradient_checkpointing_use_reentrant_true(self):
+    @unittest.skip(
+        reason="This architecture seem to not compute gradients properly when using GC, check: https://github.com/huggingface/transformers/pull/27124"
+    )
+    def test_training_gradient_checkpointing_use_reentrant_false(self):
         pass
 
     @unittest.skip(reason="ViTMatte does not support input and output embeddings")
@@ -239,27 +249,20 @@ class VitMatteModelTest(ModelTesterMixin, PipelineTesterMixin, unittest.TestCase
                     self.assertEqual(len(model.backbone.out_indices), 2)
 
         config, inputs_dict = self.model_tester.prepare_config_and_inputs_for_common()
-        config_dict = config.to_dict()
-        config_dict["use_pretrained_backbone"] = True
-        config_dict["backbone_config"] = None
-        config_dict["backbone_kwargs"] = {"out_indices": [-2, -1]}
+        config.use_pretrained_backbone = True
+        config.backbone_config = None
+        config.backbone_kwargs = {"out_indices": [-2, -1]}
         # Force load_backbone path
-        config_dict["is_hybrid"] = False
+        config.is_hybrid = False
 
         # Load a timm backbone
-        config_dict["backbone"] = "resnet18"
-        config_dict["use_timm_backbone"] = True
-        config = config.__class__(**config_dict)
+        config.backbone = "resnet18"
+        config.use_timm_backbone = True
         _validate_backbone_init()
 
         # Load a HF backbone
-        config_dict = config.to_dict()
-        config_dict["use_pretrained_backbone"] = True
-        config_dict["backbone_config"] = None
-        config_dict["backbone_kwargs"] = {"out_indices": [-2, -1]}
-        config_dict["backbone"] = "facebook/dinov2-small"
-        config_dict["use_timm_backbone"] = False
-        config = config.__class__(**config_dict)
+        config.backbone = "facebook/dinov2-small"
+        config.use_timm_backbone = False
         _validate_backbone_init()
 
 

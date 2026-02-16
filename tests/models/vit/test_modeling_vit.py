@@ -14,7 +14,6 @@
 """Testing suite for the PyTorch ViT model."""
 
 import unittest
-from functools import cached_property
 
 from transformers import ViTConfig
 from transformers.testing_utils import (
@@ -26,7 +25,7 @@ from transformers.testing_utils import (
     slow,
     torch_device,
 )
-from transformers.utils import is_torch_available, is_vision_available
+from transformers.utils import cached_property, is_torch_available, is_vision_available
 
 from ...test_configuration_common import ConfigTester
 from ...test_modeling_common import ModelTesterMixin, floats_tensor, ids_tensor
@@ -202,8 +201,12 @@ class ViTModelTest(ModelTesterMixin, PipelineTesterMixin, unittest.TestCase):
         if is_torch_available()
         else {}
     )
+    fx_compatible = True
 
+    test_pruning = False
     test_resize_embeddings = False
+    test_head_masking = False
+    test_torch_exportable = True
 
     def setUp(self):
         self.model_tester = ViTModelTester(self)
@@ -319,7 +322,7 @@ class ViTModelIntegrationTest(unittest.TestCase):
         r"""
         A small test to make sure that inference work in half precision without any problem.
         """
-        model = ViTModel.from_pretrained("facebook/dino-vits8", dtype=torch.float16, device_map="auto")
+        model = ViTModel.from_pretrained("facebook/dino-vits8", torch_dtype=torch.float16, device_map="auto")
         image_processor = self.default_image_processor
 
         image = prepare_img()

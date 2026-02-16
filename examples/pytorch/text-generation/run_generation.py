@@ -37,6 +37,7 @@ from accelerate.utils import set_seed
 from transformers import (
     AutoTokenizer,
     BloomForCausalLM,
+    BloomTokenizerFast,
     CTRLLMHeadModel,
     CTRLTokenizer,
     GenerationMixin,
@@ -62,7 +63,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-MAX_LENGTH = 10000  # Hardcoded max length to avoid infinite loop
+MAX_LENGTH = int(10000)  # Hardcoded max length to avoid infinite loop
 
 MODEL_CLASSES = {
     "gpt2": (GPT2LMHeadModel, GPT2Tokenizer),
@@ -71,7 +72,7 @@ MODEL_CLASSES = {
     "xlnet": (XLNetLMHeadModel, XLNetTokenizer),
     "xlm": (XLMWithLMHeadModel, XLMTokenizer),
     "gptj": (GPTJForCausalLM, AutoTokenizer),
-    "bloom": (BloomForCausalLM, AutoTokenizer),
+    "bloom": (BloomForCausalLM, BloomTokenizerFast),
     "llama": (LlamaForCausalLM, AutoTokenizer),
     "opt": (OPTForCausalLM, GPT2Tokenizer),
 }
@@ -332,7 +333,7 @@ def main():
     parser.add_argument(
         "--fp16",
         action="store_true",
-        help="Whether to use 16-bit (mixed) precision instead of 32-bit",
+        help="Whether to use 16-bit (mixed) precision (through NVIDIA apex) instead of 32-bit",
     )
     parser.add_argument("--jit", action="store_true", help="Whether or not to use jit trace to accelerate inference")
     args = parser.parse_args()

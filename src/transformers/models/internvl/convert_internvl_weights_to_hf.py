@@ -1,3 +1,4 @@
+# coding=utf-8
 # Copyright 2025 HuggingFace Inc. team. All rights reserved.
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,7 +15,7 @@ import argparse
 import gc
 import os
 import re
-from typing import Literal
+from typing import Literal, Optional
 
 import torch
 from einops import rearrange
@@ -146,7 +147,7 @@ def get_lm_type(path: str) -> Literal["qwen2", "llama"]:
     return lm_type
 
 
-def convert_old_keys_to_new_keys(state_dict_keys: dict | None = None, path: str | None = None):
+def convert_old_keys_to_new_keys(state_dict_keys: Optional[dict] = None, path: Optional[str] = None):
     """
     This function should be applied only once, on the concatenated keys to efficiently rename using
     the key mappings.
@@ -185,7 +186,7 @@ def convert_old_keys_to_new_keys(state_dict_keys: dict | None = None, path: str 
 def load_original_state_dict(input_base_path):
     model = AutoModel.from_pretrained(
         input_base_path,
-        dtype=torch.bfloat16,
+        torch_dtype=torch.bfloat16,
         use_flash_attn=False,
         trust_remote_code=True,
     ).eval()
@@ -243,8 +244,7 @@ def write_model(
     config.architectures = ["InternVLForConditionalGeneration"]
     config.save_pretrained(model_path)
     if push_to_hub:
-        model_name = (hub_dir or model_path).split(os.path.sep)[-1]
-        config.push_to_hub(model_name)
+        config.push_to_hub(hub_dir, use_temp_dir=True)
     print("Model config saved successfully...")
 
     # ------------------------------------------------------------
@@ -303,10 +303,9 @@ def write_model(
     print("Unexpected keys:", unexpected_keys)
 
     print("Saving the model.")
-    model_name = model_path.split(os.path.sep)[-1]
     model.save_pretrained(model_path)
     if push_to_hub:
-        model.push_to_hub(model_name)
+        model.push_to_hub(hub_dir, use_temp_dir=True)
 
     image_processor = GotOcr2ImageProcessorFast.from_pretrained(model_path)
     video_processor = InternVLVideoProcessor.from_pretrained(model_path)
@@ -319,7 +318,7 @@ def write_model(
     )
     processor.save_pretrained(model_path)
     if push_to_hub:
-        processor.push_to_hub(model_name)
+        processor.push_to_hub(hub_dir, use_temp_dir=True)
 
     # generation config
     if get_lm_type(input_base_path) == "llama":
@@ -331,19 +330,21 @@ def write_model(
         )
         generation_config.save_pretrained(model_path)
         if push_to_hub:
-            generation_config.push_to_hub(model_name)
+            generation_config.push_to_hub(hub_dir, use_temp_dir=True)
 
     # del state_dict, model
 
     # # Safety check: reload the converted model
     gc.collect()
     print("Reloading the model to check if it's saved correctly.")
-    model = InternVLForConditionalGeneration.from_pretrained(model_path, device_map="auto", dtype=torch.bfloat16)
+    model = InternVLForConditionalGeneration.from_pretrained(model_path, device_map="auto", torch_dtype=torch.bfloat16)
     print("Model reloaded successfully.")
     del model
 
 
-def write_tokenizer(save_dir: str, push_to_hub: bool = False, path: str | None = None, hub_dir: str | None = None):
+def write_tokenizer(
+    save_dir: str, push_to_hub: bool = False, path: Optional[str] = None, hub_dir: Optional[str] = None
+):
     if get_lm_type(path) == "qwen2":
         tokenizer = AutoTokenizer.from_pretrained(
             "Qwen/Qwen2.5-VL-7B-Instruct",
@@ -392,12 +393,11 @@ def write_tokenizer(save_dir: str, push_to_hub: bool = False, path: str | None =
 
     tokenizer.chat_template = chat_template
     tokenizer.save_pretrained(save_dir)
-    model_name = (hub_dir or save_dir).split(os.path.sep)[-1]
     if push_to_hub:
-        tokenizer.push_to_hub(model_name)
+        tokenizer.push_to_hub(hub_dir, use_temp_dir=True)
 
 
-def write_image_processor(save_dir: str, push_to_hub: bool = False, hub_dir: str | None = None):
+def write_image_processor(save_dir: str, push_to_hub: bool = False, hub_dir: Optional[str] = None):
     image_processor = GotOcr2ImageProcessorFast(
         do_resize=True,
         size={"height": 448, "width": 448},
@@ -410,9 +410,8 @@ def write_image_processor(save_dir: str, push_to_hub: bool = False, hub_dir: str
     )
 
     image_processor.save_pretrained(save_dir)
-    model_name = (hub_dir or save_dir).split(os.path.sep)[-1]
     if push_to_hub:
-        image_processor.push_to_hub(model_name)
+        image_processor.push_to_hub(hub_dir, use_temp_dir=True)
 
 
 def main():
@@ -434,9 +433,7 @@ def main():
     )
 
     parser.add_argument(
-        "--push_to_hub",
-        action="store_true",
-        help="Whether or not to push the converted model to the Hugging Face hub.",
+        "--push_to_hub", action="store_true", help="Whether or not to push the converted model to the 🤗 hub."
     )
     args = parser.parse_args()
     write_tokenizer(

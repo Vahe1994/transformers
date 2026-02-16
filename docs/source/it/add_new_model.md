@@ -32,7 +32,7 @@ sarai l'artefice di un importante contributo open-source a 🤗 Transformers. Du
 - ottenere più comprensione delle best practices in open-source
 - capire i principi di design di una della librerie NLP più popolari
 - capire come efficientemente testare complessi modelli NLP
-- capire come integrare utilit Python come `black`, `ruff`, `make fix-repo` in una libreria per garantire sempre di avere un codice leggibile e pulito
+- capire come integrare utilit Python come `black`, `ruff`, `make fix-copies` in una libreria per garantire sempre di avere un codice leggibile e pulito
 
 Siamo anche contenti se vuoi aggiungere un modello che non può essere trovato nella cartella “calls-for-model-addition”.
 Le seguenti sezioni spiegano in dettaglio come aggiungere un nuovo modello. Può anche essere molto utile controllare modelli
@@ -67,7 +67,7 @@ Tenendo questi principi in mente, immergiamoci nel design generale della libreri
 ### Panoramica sui modelli
 
 Per aggiungere con successo un modello, é importante capire l'interazione tra il tuo modello e la sua configurazione,
-[`PreTrainedModel`], e [`PreTrainedConfig`]. Per dare un esempio, chiameremo il modello da aggiungere a 🤗 Transformers
+[`PreTrainedModel`], e [`PretrainedConfig`]. Per dare un esempio, chiameremo il modello da aggiungere a 🤗 Transformers
 `BrandNewBert`.
 
 Diamo un'occhiata:
@@ -94,9 +94,9 @@ model.config  # il modello ha accesso al suo config
 ```
 
 Analogamente al modello, la configurazione eredita le funzionalità base di serializzazione e deserializzazione da
-[`PreTrainedConfig`]. É da notare che la configurazione e il modello sono sempre serializzati in due formati differenti -
+[`PretrainedConfig`]. É da notare che la configurazione e il modello sono sempre serializzati in due formati differenti -
 il modello é serializzato in un file *pytorch_model.bin* mentre la configurazione con *config.json*. Chiamando
-[`~PreTrainedModel.save_pretrained`] automaticamente chiamerà [`~PreTrainedConfig.save_pretrained`], cosicché sia il
+[`~PreTrainedModel.save_pretrained`] automaticamente chiamerà [`~PretrainedConfig.save_pretrained`], cosicché sia il
 modello che la configurazione siano salvati.
 
 
@@ -726,7 +726,7 @@ make style
 E che il codice passi i quality check:
 
 ```bash
-make check-repo
+make quality
 ```
 
 A volte capita che manchino delle informazioninella docstring o alcuni nomi sbagliati, questo farà fallire i tests sopra.
@@ -746,9 +746,11 @@ Il metodo `push_to_hub`, presente in tutti i modelli `transformers`, é una mani
 
 ```python
 brand_new_bert.push_to_hub(
-    repo_id="brand_new_bert"
+    repo_path_or_name="brand_new_bert",
     # Uncomment the following line to push to an organization
-    # repo_id="<ORGANIZATION>/brand_new_bert"
+    # organization="<ORGANIZATION>",
+    commit_message="Add model",
+    use_temp_dir=True,
 )
 ```
 

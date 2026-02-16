@@ -10,7 +10,6 @@ from transformers import (
     HfArgumentParser,
     Trainer,
     TrainingArguments,
-    is_torch_available,
     set_seed,
 )
 from transformers.testing_utils import (
@@ -22,10 +21,6 @@ from transformers.testing_utils import (
     run_first,
     torch_device,
 )
-
-
-if is_torch_available():
-    import torch
 
 
 class TestTrainerDistributedLoss(TestCasePlus):
@@ -82,7 +77,8 @@ def run_distributed_training(training_args):
 
     tokenizer.pad_token = tokenizer.eos_token
     data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
-    model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.float32)
+
+    model = AutoModelForCausalLM.from_pretrained(model_name)
 
     loss_callback = StoreLossCallback()
 

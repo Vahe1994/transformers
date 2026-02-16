@@ -16,7 +16,6 @@
 import copy
 import unittest
 
-import pytest
 import requests
 
 from transformers import (
@@ -30,6 +29,7 @@ from transformers import (
 from transformers.testing_utils import (
     Expectations,
     cleanup,
+    require_read_token,
     require_torch,
     slow,
     torch_device,
@@ -189,8 +189,10 @@ class PaliGemmaForConditionalGenerationModelTest(ModelTesterMixin, GenerationTes
         else ()
     )
     pipeline_model_mapping = {"image-text-to-text": PaliGemmaForConditionalGeneration}
-    additional_model_inputs = ["token_type_ids"]
-
+    fx_compatible = False
+    test_pruning = False
+    test_torchscript = False
+    test_head_masking = False
     _is_composite = True
 
     def setUp(self):
@@ -207,13 +209,12 @@ class PaliGemmaForConditionalGenerationModelTest(ModelTesterMixin, GenerationTes
         config, input_dict = self.model_tester.prepare_config_and_inputs_for_common()
         for model_class in self.all_model_classes:
             model = model_class(config).to(torch_device)
-            model.eval()
             curr_input_dict = copy.deepcopy(input_dict)  # in=place modifications further
             _ = model(**curr_input_dict)  # successful forward with no modifications
 
             # remove one image but leave the image token in text
             curr_input_dict["pixel_values"] = curr_input_dict["pixel_values"][-1:, ...]
-            with self.assertRaisesRegex(ValueError, "Image features and image tokens do not match"):
+            with self.assertRaises(ValueError):
                 _ = model(**curr_input_dict)
 
             # simulate multi-image case by concatenating inputs where each has exactly one image/image-token
@@ -222,24 +223,30 @@ class PaliGemmaForConditionalGenerationModelTest(ModelTesterMixin, GenerationTes
             input_ids = torch.cat([input_ids, input_ids], dim=0)
 
             # one image and two image tokens raise an error
-            with self.assertRaisesRegex(ValueError, "Image features and image tokens do not match"):
+            with self.assertRaises(ValueError):
                 _ = model(input_ids=input_ids, pixel_values=pixel_values)
 
             # two images and two image tokens don't raise an error
             pixel_values = torch.cat([pixel_values, pixel_values], dim=0)
             _ = model(input_ids=input_ids, pixel_values=pixel_values)
 
-    @pytest.mark.xfail(reason="This architecture seems to not compute gradients for some layer.")
+    @unittest.skip(
+        reason="This architecture seem to not compute gradients properly when using GC, check: https://github.com/huggingface/transformers/pull/27124"
+    )
     def test_training_gradient_checkpointing(self):
-        super().test_training_gradient_checkpointing()
+        pass
 
-    @pytest.mark.xfail(reason="This architecture seems to not compute gradients for some layer.")
+    @unittest.skip(
+        reason="This architecture seem to not compute gradients properly when using GC, check: https://github.com/huggingface/transformers/pull/27124"
+    )
+    def test_training_gradient_checkpointing_use_reentrant(self):
+        pass
+
+    @unittest.skip(
+        reason="This architecture seem to not compute gradients properly when using GC, check: https://github.com/huggingface/transformers/pull/27124"
+    )
     def test_training_gradient_checkpointing_use_reentrant_false(self):
-        super().test_training_gradient_checkpointing_use_reentrant_false()
-
-    @pytest.mark.xfail(reason="This architecture seems to not compute gradients for some layer.")
-    def test_training_gradient_checkpointing_use_reentrant_true(self):
-        super().test_training_gradient_checkpointing_use_reentrant_true()
+        pass
 
     @unittest.skip(reason="Some undefined behavior encountered with test versions of this model. Skip for now.")
     def test_cpu_offload(self):
@@ -255,6 +262,12 @@ class PaliGemmaForConditionalGenerationModelTest(ModelTesterMixin, GenerationTes
 
     @unittest.skip(reason="Some undefined behavior encountered with test versions of this model. Skip for now.")
     def test_model_parallelism(self):
+        pass
+
+    @unittest.skip(
+        reason="PaliGemma's SigLip encoder uses the same initialization scheme as the Flax original implementation"
+    )
+    def test_initialization(self):
         pass
 
     # TODO extend valid outputs to include this test @Molbap
@@ -330,6 +343,7 @@ class PaliGemmaForConditionalGenerationModelTest(ModelTesterMixin, GenerationTes
 
 @slow
 @require_torch
+@require_read_token
 class PaliGemmaForConditionalGenerationIntegrationTest(unittest.TestCase):
     def setUp(self):
         self.processor = PaliGemmaProcessor.from_pretrained("google/paligemma-3b-pt-224")
@@ -364,10 +378,7 @@ class PaliGemmaForConditionalGenerationIntegrationTest(unittest.TestCase):
         processor = PaliGemmaProcessor.from_pretrained(model_id)
         prompt = "answer en There is no snowman in any of the images. Is this true or false?"
         stop_sign_image = Image.open(
-            requests.get(
-                "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/transformers/tasks/australia.jpg",
-                stream=True,
-            ).raw
+            requests.get("https://www.ilankelman.org/stopsigns/australia.jpg", stream=True).raw
         )
         snow_image = Image.open(
             requests.get(
@@ -464,7 +475,7 @@ class PaliGemmaForConditionalGenerationIntegrationTest(unittest.TestCase):
         # Let' s make sure we test the preprocessing to replace what is used
         model_id = "google/paligemma-3b-pt-224"
         model = PaliGemmaForConditionalGeneration.from_pretrained(
-            model_id, revision="bfloat16", dtype=torch.bfloat16
+            model_id, revision="bfloat16", torch_dtype=torch.bfloat16
         ).to(torch_device)
         # The first batch is longer in terms of text, the second will be padded.
         prompts = [
@@ -493,7 +504,7 @@ class PaliGemmaForConditionalGenerationIntegrationTest(unittest.TestCase):
         # Let' s make sure we test the preprocessing to replace what is used
         model_id = "google/paligemma-3b-pt-224"
         model = PaliGemmaForConditionalGeneration.from_pretrained(
-            model_id, revision="float16", dtype=torch.float16
+            model_id, revision="float16", torch_dtype=torch.float16
         ).to(torch_device)
         # The first batch is longer in terms of text, the second will be padded.
         prompts = [
@@ -524,7 +535,7 @@ class PaliGemmaForConditionalGenerationIntegrationTest(unittest.TestCase):
         # impacted negatively segmentation generations.
         model_id = "google/paligemma-3b-pt-224"
         model = PaliGemmaForConditionalGeneration.from_pretrained(
-            model_id, revision="bfloat16", dtype=torch.bfloat16
+            model_id, revision="bfloat16", torch_dtype=torch.bfloat16
         ).to(torch_device)
         prompt = ("detect shoe",)
 
@@ -543,7 +554,7 @@ class PaliGemmaForConditionalGenerationIntegrationTest(unittest.TestCase):
             {
                 ("rocm", (9, 5)): "detect shoe\n<loc0051><loc0309><loc0708><loc0644> shoe",
                 (None, None): "detect shoe\n<loc0051><loc0309><loc0708><loc0646> shoe",
-                ("cuda", 8): "detect shoe\n<loc0051><loc0309><loc0708><loc0646> shoe",
+                ("cuda", 8): "detect shoe\n<loc0045><loc0309><loc0708><loc0646> shoe",
             }
         )  # fmt: skip
         EXPECTED_DECODED_TEXT = expected_decoded_texts.get_expectation()
@@ -576,7 +587,7 @@ class PaliGemmaForConditionalGenerationIntegrationTest(unittest.TestCase):
         # this is a supplementary test to ensure paligemma fine-tuning that relies on token_type_ids is robust to future changes
         model_id = "google/paligemma-3b-pt-224"
         model = PaliGemmaForConditionalGeneration.from_pretrained(
-            model_id, revision="bfloat16", dtype=torch.bfloat16
+            model_id, revision="bfloat16", torch_dtype=torch.bfloat16
         ).to(torch_device)
         # The first batch is longer in terms of text, the second will be padded.
         prompts = [

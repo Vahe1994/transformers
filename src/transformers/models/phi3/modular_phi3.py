@@ -1,3 +1,4 @@
+# coding=utf-8
 # Copyright 2024 Microsoft and the HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,14 +15,14 @@
 
 """PyTorch Phi-3 model."""
 
-from collections.abc import Callable
+from typing import Callable, Optional
 
 import torch
+import torch.utils.checkpoint
 from torch import nn
 
 from ...activations import ACT2FN
 from ...cache_utils import Cache
-from ...generation import GenerationMixin
 from ...modeling_flash_attention_utils import FlashAttentionKwargs
 from ...modeling_utils import ALL_ATTENTION_FUNCTIONS
 from ...processing_utils import Unpack
@@ -35,7 +36,6 @@ from ..mistral.modeling_mistral import (
     eager_attention_forward,
     rotate_half,
 )
-from ..phi.modeling_phi import PhiRotaryEmbedding
 from .configuration_phi3 import Phi3Config
 
 
@@ -63,11 +63,7 @@ class Phi3MLP(nn.Module):
         return self.down_proj(up_states)
 
 
-class Phi3RotaryEmbedding(PhiRotaryEmbedding):
-    pass
-
-
-def apply_rotary_pos_emb(q, k, cos, sin, unsqueeze_dim=1):
+def apply_rotary_pos_emb(q, k, cos, sin, position_ids=None, unsqueeze_dim=1):
     """Applies Rotary Position Embedding to the query and key tensors.
 
     Args:
@@ -75,6 +71,8 @@ def apply_rotary_pos_emb(q, k, cos, sin, unsqueeze_dim=1):
         k (`torch.Tensor`): The key tensor.
         cos (`torch.Tensor`): The cosine part of the rotary embedding.
         sin (`torch.Tensor`): The sine part of the rotary embedding.
+        position_ids (`torch.Tensor`, *optional*):
+            Deprecated and unused.
         unsqueeze_dim (`int`, *optional*, defaults to 1):
             The 'unsqueeze_dim' argument specifies the dimension along which to unsqueeze cos[position_ids] and
             sin[position_ids] so that they can be properly broadcasted to the dimensions of q and k. For example, note
@@ -100,7 +98,7 @@ def apply_rotary_pos_emb(q, k, cos, sin, unsqueeze_dim=1):
 class Phi3Attention(nn.Module):
     """Multi-headed attention from 'Attention Is All You Need' paper"""
 
-    def __init__(self, config: Phi3Config, layer_idx: int | None = None):
+    def __init__(self, config: Phi3Config, layer_idx: Optional[int] = None):
         super().__init__()
         self.config = config
         self.layer_idx = layer_idx
@@ -119,11 +117,11 @@ class Phi3Attention(nn.Module):
         self,
         hidden_states: torch.Tensor,
         position_embeddings: tuple[torch.Tensor, torch.Tensor],
-        attention_mask: torch.Tensor | None,
-        past_key_values: Cache | None = None,
-        cache_position: torch.LongTensor | None = None,
+        attention_mask: Optional[torch.Tensor],
+        past_key_value: Optional[Cache] = None,
+        cache_position: Optional[torch.LongTensor] = None,
         **kwargs: Unpack[FlashAttentionKwargs],
-    ) -> tuple[torch.Tensor, torch.Tensor | None, tuple[torch.Tensor] | None]:
+    ) -> tuple[torch.Tensor, Optional[torch.Tensor], Optional[tuple[torch.Tensor]]]:
         input_shape = hidden_states.shape[:-1]
         hidden_shape = (*input_shape, -1, self.head_dim)
 
@@ -140,14 +138,14 @@ class Phi3Attention(nn.Module):
         cos, sin = position_embeddings
         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
 
-        if past_key_values is not None:
+        if past_key_value is not None:
             # sin and cos are specific to RoPE models; cache_position needed for the static cache
             cache_kwargs = {"sin": sin, "cos": cos, "cache_position": cache_position}
-            key_states, value_states = past_key_values.update(key_states, value_states, self.layer_idx, cache_kwargs)
+            key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
 
-        attention_interface: Callable = ALL_ATTENTION_FUNCTIONS.get_interface(
-            self.config._attn_implementation, eager_attention_forward
-        )
+        attention_interface: Callable = eager_attention_forward
+        if self.config._attn_implementation != "eager":
+            attention_interface = ALL_ATTENTION_FUNCTIONS[self.config._attn_implementation]
 
         attn_output, attn_weights = attention_interface(
             self,
@@ -178,14 +176,14 @@ class Phi3DecoderLayer(MistralDecoderLayer):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        attention_mask: torch.Tensor | None = None,
-        position_ids: torch.LongTensor | None = None,
-        past_key_values: Cache | None = None,
-        use_cache: bool | None = False,
-        cache_position: torch.LongTensor | None = None,
-        position_embeddings: tuple[torch.Tensor, torch.Tensor] | None = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        past_key_value: Optional[Cache] = None,
+        use_cache: Optional[bool] = False,
+        cache_position: Optional[torch.LongTensor] = None,
+        position_embeddings: Optional[tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
         **kwargs: Unpack[FlashAttentionKwargs],
-    ) -> tuple[torch.FloatTensor, tuple[torch.FloatTensor, torch.FloatTensor] | None]:
+    ) -> tuple[torch.FloatTensor, Optional[tuple[torch.FloatTensor, torch.FloatTensor]]]:
         residual = hidden_states
         hidden_states = self.input_layernorm(hidden_states)
 
@@ -193,7 +191,7 @@ class Phi3DecoderLayer(MistralDecoderLayer):
             hidden_states=hidden_states,
             attention_mask=attention_mask,
             position_ids=position_ids,
-            past_key_values=past_key_values,
+            past_key_value=past_key_value,
             use_cache=use_cache,
             cache_position=cache_position,
             position_embeddings=position_embeddings,
@@ -212,7 +210,7 @@ class Phi3PreTrainedModel(MistralPreTrainedModel):
     _version = "0.0.5"
 
 
-class Phi3ForCausalLM(MistralForCausalLM):
+class Phi3ForCausalLM(MistralForCausalLM, Phi3PreTrainedModel):
     def prepare_inputs_for_generation(
         self,
         input_ids,
@@ -232,15 +230,14 @@ class Phi3ForCausalLM(MistralForCausalLM):
         # It will cause downside of slower at this single token position, however, better than current failure.
         if (
             past_key_values
-            and hasattr(self.config, "original_max_position_embeddings")
+            and self.config.rope_scaling
             and input_ids.shape[1] >= self.config.original_max_position_embeddings + 1
         ):
             past_length = cache_position[0]
             if past_length <= self.config.original_max_position_embeddings:
                 past_key_values = None
 
-        model_inputs = GenerationMixin.prepare_inputs_for_generation(
-            self,
+        model_inputs = Phi3PreTrainedModel().prepare_inputs_for_generation(
             input_ids=input_ids,
             past_key_values=past_key_values,
             attention_mask=attention_mask,

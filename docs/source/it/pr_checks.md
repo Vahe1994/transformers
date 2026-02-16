@@ -37,7 +37,7 @@ pip install transformers[dev]
 o un'installazione modificabile:
 
 ```bash
-pip install -e ".[dev]"
+pip install -e .[dev]
 ```
 
 all'interno del repo Transformers.
@@ -88,7 +88,13 @@ make style
 I controlli della CI sono applicati all'interno del controllo `ci/circleci: check_code_quality`. Esegue anche `flake8`, che dà un'occhiata di base al codice e si lamenta se trova una variabile non definita o non utilizzata. Per eseguire questo controllo localmente, usare
 
 ```bash
-make check-repo
+make quality
+```
+
+Questa operazione può richiedere molto tempo, quindi per eseguire la stessa operazione solo sui file modificati nel branch corrente, eseguire
+
+```bash
+make fixup
 ```
 
 Quest'ultimo comando eseguirà anche tutti i controlli aggiuntivi per la consistenza del repository. Diamogli un'occhiata.
@@ -98,7 +104,7 @@ Quest'ultimo comando eseguirà anche tutti i controlli aggiuntivi per la consist
 All'interno sono raggruppati tutti i test per assicurarsi che la tua PR lasci il repository in un buono stato ed è eseguito dal controllo `ci/circleci: check_repository_consistency`. Puoi eseguire localmente questo controllo eseguendo quanto segue:
 
 ```bash
-make check-repo
+make repo-consistency
 ```
 
 Questo verifica che:
@@ -113,7 +119,7 @@ Questo verifica che:
 Se questo controllo fallisce, le prime due voci richiedono una correzione manuale, mentre le ultime quattro possono essere corrette automaticamente per te eseguendo il comando
 
 ```bash
-make fix-repo
+make fix-copies
 ```
 
 Ulteriori controlli riguardano le PR che aggiungono nuovi modelli, principalmente che:

@@ -37,7 +37,7 @@ AWQ方法已经在[*AWQ: Activation-aware Weight Quantization for LLM Compressio
 
 ### 加载一个量化的模型
 
-您可以使用`from_pretrained`方法从Hub加载一个量化模型。通过检查模型配置文件（`configuration.json`）中是否存在`quantization_config`属性，来进行确认推送的权重是量化的。您可以通过检查字段`quantization_config.quant_method`来确认模型是否以AWQ格式进行量化，该字段应该设置为`"awq"`。请注意，为了性能原因，默认情况下加载模型将设置其他权重为`float16`。如果您想更改这种设置，可以通过将`dtype`参数设置为`torch.float32`或`torch.bfloat16`。在下面的部分中，您可以找到一些示例片段和notebook。
+您可以使用`from_pretrained`方法从Hub加载一个量化模型。通过检查模型配置文件（`configuration.json`）中是否存在`quantization_config`属性，来进行确认推送的权重是量化的。您可以通过检查字段`quantization_config.quant_method`来确认模型是否以AWQ格式进行量化，该字段应该设置为`"awq"`。请注意，为了性能原因，默认情况下加载模型将设置其他权重为`float16`。如果您想更改这种设置，可以通过将`torch_dtype`参数设置为`torch.float32`或`torch.bfloat16`。在下面的部分中，您可以找到一些示例片段和notebook。
 
 
 ## 示例使用
@@ -113,22 +113,22 @@ model = AutoModelForCausalLM.from_pretrained("TheBloke/zephyr-7B-alpha-AWQ", att
 
 [[autodoc]] AwqConfig
 
-## GPT-QModel 集成
+## `AutoGPTQ` 集成
 
 🤗 Transformers已经整合了`optimum` API，用于对语言模型执行GPTQ量化。您可以以8、4、3甚至2位加载和量化您的模型，而性能无明显下降，并且推理速度更快！这受到大多数GPU硬件的支持。
 
 要了解更多关于量化模型的信息，请查看：
 - [GPTQ](https://huggingface.co/papers/2210.17323)论文
 - `optimum`关于GPTQ量化的[指南](https://huggingface.co/docs/optimum/llm_quantization/usage_guides/quantization)
-- 用作后端的`GPT-QModel` (https://github.com/ModelCloud/GPTQModel)库
+- 用作后端的[`AutoGPTQ`](https://github.com/PanQiWei/AutoGPTQ)库
 
 
 ### 要求
 
 为了运行下面的代码，您需要安装：
 
-- 安装最新版本的 `GPT-QModel` 库
-`pip install gptqmodel --no-build-isolation`
+- 安装最新版本的 `AutoGPTQ` 库
+`pip install auto-gptq`
 
 - 从源代码安装最新版本的`optimum`
 `pip install git+https://github.com/huggingface/optimum.git`
@@ -162,7 +162,7 @@ gptq_config = GPTQConfig(bits=4, dataset = "c4", tokenizer=tokenizer)
 
 
 ```python
-dataset = ["gptqmodel is an easy-to-use model quantization library with user-friendly apis, based on the GPTQ algorithm."]
+dataset = ["auto-gptq is an easy-to-use model quantization library with user-friendly apis, based on GPTQ algorithm."]
 quantization = GPTQConfig(bits=4, dataset = dataset, tokenizer=tokenizer)
 ```
 
@@ -289,19 +289,19 @@ model = AutoModelForCausalLM.from_pretrained("{your_username}/opt-125m-gptq", de
 只要您的模型支持使用 🤗 Accelerate 进行加载并包含 `torch.nn.Linear` 层，您可以在调用 [`~PreTrainedModel.from_pretrained`] 方法时使用 `load_in_8bit` 或 `load_in_4bit` 参数来量化模型。这也应该适用于任何模态。
 
 ```python
-from transformers import AutoModelForCausalLM, BitsAndBytesConfig
+from transformers import AutoModelForCausalLM
 
-model_8bit = AutoModelForCausalLM.from_pretrained("facebook/opt-350m", quantization_config=BitsAndBytesConfig(load_in_8bit=True))
-model_4bit = AutoModelForCausalLM.from_pretrained("facebook/opt-350m", quantization_config=BitsAndBytesConfig(load_in_4bit=True))
+model_8bit = AutoModelForCausalLM.from_pretrained("facebook/opt-350m", load_in_8bit=True)
+model_4bit = AutoModelForCausalLM.from_pretrained("facebook/opt-350m", load_in_4bit=True)
 ```
 
-默认情况下，所有其他模块（例如 `torch.nn.LayerNorm`）将被转换为 `torch.float16` 类型。但如果您想更改它们的 `dtype`，可以重载 `dtype` 参数：
+默认情况下，所有其他模块（例如 `torch.nn.LayerNorm`）将被转换为 `torch.float16` 类型。但如果您想更改它们的 `dtype`，可以重载 `torch_dtype` 参数：
 
 ```python
 >>> import torch
->>> from transformers import AutoModelForCausalLM, BitsAndBytesConfig
+>>> from transformers import AutoModelForCausalLM
 
->>> model_8bit = AutoModelForCausalLM.from_pretrained("facebook/opt-350m", quantization_config=BitsAndBytesConfig(load_in_8bit=True), dtype=torch.float32)
+>>> model_8bit = AutoModelForCausalLM.from_pretrained("facebook/opt-350m", load_in_8bit=True, torch_dtype=torch.float32)
 >>> model_8bit.model.decoder.layers[-1].final_layer_norm.weight.dtype
 torch.float32
 ```
@@ -331,7 +331,7 @@ torch.float32
 
 - **训练：** 根据 [QLoRA 论文](https://huggingface.co/papers/2305.14314)，对于4位基模型训练（使用 LoRA 适配器），应使用 `bnb_4bit_quant_type='nf4'`。
 
-- **推理：** 对于推理，`bnb_4bit_quant_type` 对性能影响不大。但是为了与模型的权重保持一致，请确保使用相同的 `bnb_4bit_compute_dtype` 和 `dtype` 参数。
+- **推理：** 对于推理，`bnb_4bit_quant_type` 对性能影响不大。但是为了与模型的权重保持一致，请确保使用相同的 `bnb_4bit_compute_dtype` 和 `torch_dtype` 参数。
 
 #### 加载 4 位量化的大模型
 
@@ -344,7 +344,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 model_id = "bigscience/bloom-1b7"
 
 tokenizer = AutoTokenizer.from_pretrained(model_id)
-model = AutoModelForCausalLM.from_pretrained(model_id, device_map="auto", quantization_config=BitsAndBytesConfig(load_in_4bit=True))
+model = AutoModelForCausalLM.from_pretrained(model_id, device_map="auto", load_in_4bit=True)
 ```
 
 <Tip warning={true}>

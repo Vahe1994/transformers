@@ -37,7 +37,7 @@ pip install transformers[dev]
 o una instalación editable:
 
 ```bash
-pip install -e ".[dev]"
+pip install -e .[dev]
 ```
 
 del repositorio de Transformers.
@@ -84,7 +84,13 @@ make style
 CI verifica que se hayan aplicado dentro de la verificación `ci/circleci: check_code_quality`. También se ejecuta `ruff`, que hará una verificación básica a tu código y te hará saber si encuentra una variable no definida, o una que no se usa. Para ejecutar esa verificación localmente, usa
 
 ```bash
-make check-repo
+make quality
+```
+
+Esto puede llevar mucho tiempo, así que para ejecutar lo mismo solo en los archivos que modificaste en la rama actual, ejecuta
+
+```bash
+make fixup
 ```
 
 Este último comando también ejecutará todas las verificaciones adicionales para la consistencia del repositorio. Echemos un vistazo a estas pruebas.
@@ -94,7 +100,7 @@ Este último comando también ejecutará todas las verificaciones adicionales pa
 Esta verificación reagrupa todas las pruebas para asegurarse de que tu PR deja el repositorio en buen estado, y se realiza mediante `ci/circleci: check_repository_consistency`. Puedes ejecutar localmente esta verificación ejecutando lo siguiente:
 
 ```bash
-make check-repo
+make repo-consistency
 ```
 
 Esta instrucción verifica que:
@@ -110,7 +116,7 @@ Esta instrucción verifica que:
 Si esta verificación falla, los primeros dos elementos requieren una reparación manual, los últimos cuatro pueden repararse automáticamente ejecutando el comando
 
 ```bash
-make fix-repo
+make fix-copies
 ```
 
 Las verificaciones adicionales se refieren a los PRs que agregan nuevos modelos, principalmente que:

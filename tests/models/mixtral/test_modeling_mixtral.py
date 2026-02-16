@@ -17,13 +17,13 @@ import unittest
 
 import pytest
 
-from transformers import is_torch_available, set_seed
+from transformers import MixtralConfig, is_torch_available
 from transformers.testing_utils import (
     Expectations,
-    is_flaky,
     require_flash_attn,
     require_torch,
     require_torch_accelerator,
+    require_torch_gpu,
     slow,
     torch_device,
 )
@@ -34,6 +34,9 @@ if is_torch_available():
 
     from transformers import (
         MixtralForCausalLM,
+        MixtralForQuestionAnswering,
+        MixtralForSequenceClassification,
+        MixtralForTokenClassification,
         MixtralModel,
     )
 
@@ -41,12 +44,42 @@ from ...causal_lm_tester import CausalLMModelTest, CausalLMModelTester
 
 
 class MixtralModelTester(CausalLMModelTester):
+    config_class = MixtralConfig
     if is_torch_available():
         base_model_class = MixtralModel
+        causal_lm_class = MixtralForCausalLM
+        sequence_class = MixtralForSequenceClassification
+        token_class = MixtralForTokenClassification
+        question_answering_class = MixtralForQuestionAnswering
 
 
 @require_torch
-class MixtralModelTest(CausalLMModelTest, unittest.TestCase):
+class MistralModelTest(CausalLMModelTest, unittest.TestCase):
+    all_model_classes = (
+        (
+            MixtralModel,
+            MixtralForCausalLM,
+            MixtralForSequenceClassification,
+            MixtralForTokenClassification,
+            MixtralForQuestionAnswering,
+        )
+        if is_torch_available()
+        else ()
+    )
+    pipeline_model_mapping = (
+        {
+            "feature-extraction": MixtralModel,
+            "text-classification": MixtralForSequenceClassification,
+            "token-classification": MixtralForTokenClassification,
+            "text-generation": MixtralForCausalLM,
+            "question-answering": MixtralForQuestionAnswering,
+        }
+        if is_torch_available()
+        else {}
+    )
+
+    test_headmasking = False
+    test_pruning = False
     model_tester_class = MixtralModelTester
 
     # TODO (ydshieh): Check this. See https://app.circleci.com/pipelines/github/huggingface/transformers/79245/workflows/9490ef58-79c2-410d-8f51-e3495156cf9c/jobs/1012146
@@ -63,22 +96,20 @@ class MixtralModelTest(CausalLMModelTest, unittest.TestCase):
         return True
 
     @require_flash_attn
-    @require_torch_accelerator
+    @require_torch_gpu
     @pytest.mark.flash_attn_test
     @slow
     def test_flash_attn_2_inference_equivalence_right_padding(self):
-        self.skipTest(reason="Mixtral flash attention does not support right padding")
+        self.skipTest(reason="Mistral flash attention does not support right padding")
 
-    @is_flaky(max_attempts=2)
+    # Ignore copy
     def test_load_balancing_loss(self):
         r"""
         Let's make sure we can actually compute the loss and do a backward on it.
         """
-        # Set seed for deterministic test - ensures reproducible model initialization and inputs
-        set_seed(42)
         config, input_dict = self.model_tester.prepare_config_and_inputs_for_common()
         config.num_labels = 3
-        config.num_local_experts = 3
+        config.num_local_experts = 8
         config.output_router_logits = True
         input_ids = input_dict["input_ids"]
         attention_mask = input_ids.ne(1).to(torch_device)
@@ -91,7 +122,7 @@ class MixtralModelTest(CausalLMModelTest, unittest.TestCase):
 
         # First, we make sure that adding padding tokens doesn't change the loss
         # loss(input_ids, attention_mask=None) == loss(input_ids + padding, attention_mask=attention_mask_with_padding)
-        pad_length = input_ids.shape[1] * 4
+        pad_length = 1000
         # Add padding tokens (assume that pad_token_id=1) to input_ids
         padding_block = torch.ones(input_ids.shape[0], pad_length, dtype=torch.int32).to(torch_device)
         padded_input_ids = torch.cat((padding_block, input_ids), dim=1)  # this is to simulate padding to the left
@@ -118,7 +149,7 @@ class MixtralIntegrationTest(unittest.TestCase):
 
         model = MixtralForCausalLM.from_pretrained(
             model_id,
-            dtype=torch.bfloat16,
+            torch_dtype=torch.bfloat16,
         ).to(torch_device)
         # TODO: might need to tweak it in case the logits do not match on our daily runners
         # these logits have been obtained with the original megablocks implementation.
@@ -152,7 +183,7 @@ class MixtralIntegrationTest(unittest.TestCase):
 
         model = MixtralForCausalLM.from_pretrained(
             model_id,
-            dtype=torch.bfloat16,
+            torch_dtype=torch.bfloat16,
         ).to(torch_device)
 
         # TODO: might need to tweak it in case the logits do not match on our daily runners

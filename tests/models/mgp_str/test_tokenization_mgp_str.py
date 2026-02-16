@@ -16,12 +16,13 @@
 import json
 import os
 import unittest
+from functools import lru_cache
 
 from transformers import MgpstrTokenizer
 from transformers.models.mgp_str.tokenization_mgp_str import VOCAB_FILES_NAMES
 from transformers.testing_utils import require_tokenizers
 
-from ...test_tokenization_common import TokenizerTesterMixin
+from ...test_tokenization_common import TokenizerTesterMixin, use_cache_if_possible
 
 
 @require_tokenizers
@@ -44,6 +45,8 @@ class MgpstrTokenizationTest(TokenizerTesterMixin, unittest.TestCase):
             fp.write(json.dumps(vocab_tokens) + "\n")
 
     @classmethod
+    @use_cache_if_possible
+    @lru_cache(maxsize=64)
     def get_tokenizer(cls, pretrained_name=None, **kwargs):
         pretrained_name = pretrained_name or cls.tmpdirname
         return MgpstrTokenizer.from_pretrained(pretrained_name, **kwargs)

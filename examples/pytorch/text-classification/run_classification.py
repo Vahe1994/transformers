@@ -35,6 +35,7 @@ import os
 import random
 import sys
 from dataclasses import dataclass, field
+from typing import Optional
 
 import datasets
 import evaluate
@@ -54,12 +55,13 @@ from transformers import (
     default_data_collator,
     set_seed,
 )
-from transformers.utils import check_min_version
+from transformers.trainer_utils import get_last_checkpoint
+from transformers.utils import check_min_version, send_example_telemetry
 from transformers.utils.versions import require_version
 
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-check_min_version("4.57.0.dev0")
+check_min_version("4.55.0.dev0")
 
 require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/text-classification/requirements.txt")
 
@@ -77,10 +79,10 @@ class DataTrainingArguments:
     the command line.
     """
 
-    dataset_name: str | None = field(
+    dataset_name: Optional[str] = field(
         default=None, metadata={"help": "The name of the dataset to use (via the datasets library)."}
     )
-    dataset_config_name: str | None = field(
+    dataset_config_name: Optional[str] = field(
         default=None, metadata={"help": "The configuration name of the dataset to use (via the datasets library)."}
     )
     do_regression: bool = field(
@@ -89,7 +91,7 @@ class DataTrainingArguments:
             "help": "Whether to do regression instead of classification. If None, will be inferred from the dataset."
         },
     )
-    text_column_names: str | None = field(
+    text_column_names: Optional[str] = field(
         default=None,
         metadata={
             "help": (
@@ -98,36 +100,36 @@ class DataTrainingArguments:
             )
         },
     )
-    text_column_delimiter: str | None = field(
+    text_column_delimiter: Optional[str] = field(
         default=" ", metadata={"help": "The delimiter to use to join text columns into a single sentence."}
     )
-    train_split_name: str | None = field(
+    train_split_name: Optional[str] = field(
         default=None,
         metadata={
             "help": 'The name of the train split in the input dataset. If not specified, will use the "train" split when do_train is enabled'
         },
     )
-    validation_split_name: str | None = field(
+    validation_split_name: Optional[str] = field(
         default=None,
         metadata={
             "help": 'The name of the validation split in the input dataset. If not specified, will use the "validation" split when do_eval is enabled'
         },
     )
-    test_split_name: str | None = field(
+    test_split_name: Optional[str] = field(
         default=None,
         metadata={
             "help": 'The name of the test split in the input dataset. If not specified, will use the "test" split when do_predict is enabled'
         },
     )
-    remove_splits: str | None = field(
+    remove_splits: Optional[str] = field(
         default=None,
         metadata={"help": "The splits to remove from the dataset. Multiple splits should be separated by commas."},
     )
-    remove_columns: str | None = field(
+    remove_columns: Optional[str] = field(
         default=None,
         metadata={"help": "The columns to remove from the dataset. Multiple columns should be separated by commas."},
     )
-    label_column_name: str | None = field(
+    label_column_name: Optional[str] = field(
         default=None,
         metadata={
             "help": (
@@ -145,7 +147,7 @@ class DataTrainingArguments:
             )
         },
     )
-    preprocessing_num_workers: int | None = field(
+    preprocessing_num_workers: Optional[int] = field(
         default=None,
         metadata={"help": "The number of processes to use for the preprocessing."},
     )
@@ -167,7 +169,7 @@ class DataTrainingArguments:
     shuffle_seed: int = field(
         default=42, metadata={"help": "Random seed that will be used to shuffle the train dataset."}
     )
-    max_train_samples: int | None = field(
+    max_train_samples: Optional[int] = field(
         default=None,
         metadata={
             "help": (
@@ -176,7 +178,7 @@ class DataTrainingArguments:
             )
         },
     )
-    max_eval_samples: int | None = field(
+    max_eval_samples: Optional[int] = field(
         default=None,
         metadata={
             "help": (
@@ -185,7 +187,7 @@ class DataTrainingArguments:
             )
         },
     )
-    max_predict_samples: int | None = field(
+    max_predict_samples: Optional[int] = field(
         default=None,
         metadata={
             "help": (
@@ -194,14 +196,14 @@ class DataTrainingArguments:
             )
         },
     )
-    metric_name: str | None = field(default=None, metadata={"help": "The metric to use for evaluation."})
-    train_file: str | None = field(
+    metric_name: Optional[str] = field(default=None, metadata={"help": "The metric to use for evaluation."})
+    train_file: Optional[str] = field(
         default=None, metadata={"help": "A csv or a json file containing the training data."}
     )
-    validation_file: str | None = field(
+    validation_file: Optional[str] = field(
         default=None, metadata={"help": "A csv or a json file containing the validation data."}
     )
-    test_file: str | None = field(default=None, metadata={"help": "A csv or a json file containing the test data."})
+    test_file: Optional[str] = field(default=None, metadata={"help": "A csv or a json file containing the test data."})
 
     def __post_init__(self):
         if self.dataset_name is None:
@@ -225,13 +227,13 @@ class ModelArguments:
     model_name_or_path: str = field(
         metadata={"help": "Path to pretrained model or model identifier from huggingface.co/models"}
     )
-    config_name: str | None = field(
+    config_name: Optional[str] = field(
         default=None, metadata={"help": "Pretrained config name or path if not the same as model_name"}
     )
-    tokenizer_name: str | None = field(
+    tokenizer_name: Optional[str] = field(
         default=None, metadata={"help": "Pretrained tokenizer name or path if not the same as model_name"}
     )
-    cache_dir: str | None = field(
+    cache_dir: Optional[str] = field(
         default=None,
         metadata={"help": "Where do you want to store the pretrained models downloaded from huggingface.co"},
     )
@@ -294,6 +296,10 @@ def main():
     else:
         model_args, data_args, training_args = parser.parse_args_into_dataclasses()
 
+    # Sending telemetry. Tracking the example usage helps us better allocate resources to maintain them. The
+    # information sent is the one passed as arguments along with your Python/PyTorch versions.
+    send_example_telemetry("run_classification", model_args, data_args)
+
     # Setup logging
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
@@ -314,10 +320,25 @@ def main():
 
     # Log on each process the small summary:
     logger.warning(
-        f"Process rank: {training_args.local_process_index}, device: {training_args.device}, n_gpu: {training_args.n_gpu}, "
+        f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}, "
         + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, 16-bits training: {training_args.fp16}"
     )
     logger.info(f"Training/evaluation parameters {training_args}")
+
+    # Detecting last checkpoint.
+    last_checkpoint = None
+    if os.path.isdir(training_args.output_dir) and training_args.do_train and not training_args.overwrite_output_dir:
+        last_checkpoint = get_last_checkpoint(training_args.output_dir)
+        if last_checkpoint is None and len(os.listdir(training_args.output_dir)) > 0:
+            raise ValueError(
+                f"Output directory ({training_args.output_dir}) already exists and is not empty. "
+                "Use --overwrite_output_dir to overcome."
+            )
+        elif last_checkpoint is not None and training_args.resume_from_checkpoint is None:
+            logger.info(
+                f"Checkpoint detected, resuming training at {last_checkpoint}. To avoid this behavior, change "
+                "the `--output_dir` or add `--overwrite_output_dir` to train from scratch."
+            )
 
     # Set seed before initializing model.
     set_seed(training_args.seed)
@@ -676,6 +697,8 @@ def main():
         checkpoint = None
         if training_args.resume_from_checkpoint is not None:
             checkpoint = training_args.resume_from_checkpoint
+        elif last_checkpoint is not None:
+            checkpoint = last_checkpoint
         train_result = trainer.train(resume_from_checkpoint=checkpoint)
         metrics = train_result.metrics
         max_train_samples = (

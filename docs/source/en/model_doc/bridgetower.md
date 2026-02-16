@@ -13,7 +13,6 @@ specific language governing permissions and limitations under the License.
 rendered properly in your Markdown viewer.
 
 -->
-*This model was released on 2022-06-17 and added to Hugging Face Transformers on 2023-01-25.*
 
 # BridgeTower
 
@@ -26,7 +25,7 @@ rendered properly in your Markdown viewer.
 The BridgeTower model was proposed in [BridgeTower: Building Bridges Between Encoders in Vision-Language Representative Learning](https://huggingface.co/papers/2206.08657) by Xiao Xu, Chenfei Wu, Shachar Rosenman, Vasudev Lal, Wanxiang Che, Nan Duan. The goal of this model is to build a
 bridge between each uni-modal encoder and the cross-modal encoder to enable comprehensive and detailed interaction at each layer of the cross-modal encoder thus achieving remarkable performance on various downstream tasks with almost negligible additional performance and computational costs.
 
-This paper has been accepted to the [AAAI'23](https://aaai.org/Conferences/AAAI-23/) conference.
+This paper has been accepted to the [AAAI'23](https://aaai.org/Conferences/AAAI-23/) conference. 
 
 The abstract from the paper is the following:
 
@@ -54,7 +53,6 @@ The [`BridgeTowerProcessor`] wraps [`RobertaTokenizer`] and [`BridgeTowerImagePr
 encode the text and prepare the images respectively.
 
 The following example shows how to run contrastive learning using [`BridgeTowerProcessor`] and [`BridgeTowerForContrastiveLearning`].
-
 ```python
 >>> from transformers import BridgeTowerProcessor, BridgeTowerForContrastiveLearning
 >>> import requests
@@ -77,7 +75,6 @@ The following example shows how to run contrastive learning using [`BridgeTowerP
 ```
 
 The following example shows how to run image-text retrieval using [`BridgeTowerProcessor`] and [`BridgeTowerForImageAndTextRetrieval`].
-
 ```python
 >>> from transformers import BridgeTowerProcessor, BridgeTowerForImageAndTextRetrieval
 >>> import requests
@@ -130,6 +127,8 @@ Tips:
 - This implementation of BridgeTower uses [`RobertaTokenizer`] to generate text embeddings and OpenAI's CLIP/ViT model to compute visual embeddings.
 - Checkpoints for pre-trained [bridgeTower-base](https://huggingface.co/BridgeTower/bridgetower-base) and [bridgetower masked language modeling and image text matching](https://huggingface.co/BridgeTower/bridgetower-base-itm-mlm) are released.
 - Please refer to [Table 5](https://huggingface.co/papers/2206.08657) for BridgeTower's performance on Image Retrieval and other down stream tasks.
+- The PyTorch version of this model is only available in torch 1.10 and higher.
+
 
 ## BridgeTowerConfig
 
@@ -177,3 +176,4 @@ Tips:
 
 [[autodoc]] BridgeTowerForImageAndTextRetrieval
     - forward
+

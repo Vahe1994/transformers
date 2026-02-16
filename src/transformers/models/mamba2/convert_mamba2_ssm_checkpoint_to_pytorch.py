@@ -1,3 +1,4 @@
+# coding=utf-8
 # Copyright 2024 state-spaces/mamba2 org and HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +18,7 @@ import argparse
 import json
 from functools import partial
 from os import path
+from typing import Optional
 
 import torch
 from safetensors import safe_open
@@ -69,7 +71,7 @@ def convert_ssm_config_to_hf_config(config_ssm: dict, mamba2_model_dict: dict) -
 def load_and_save_tokenizer(
     mamba2_model_type: str,
     output_dir: str,
-    tokenizer_model_path: str | None = None,
+    tokenizer_model_path: Optional[str] = None,
 ) -> None:
     tokenizer = None
 
@@ -116,7 +118,7 @@ def convert_mamba2_checkpoint_file_to_huggingface_model_file(
     mamba2_model_type: str,
     precision: str,
     output_dir: str,
-    tokenizer_model_path: str | None = None,
+    tokenizer_model_path: Optional[str] = None,
 ) -> None:
     mamba2_model_dict = _MAMBA2_MODELS_DICT[mamba2_model_type]
 

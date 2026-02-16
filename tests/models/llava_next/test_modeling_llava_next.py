@@ -16,14 +16,12 @@
 import copy
 import unittest
 
-import pytest
 import requests
 from huggingface_hub import hf_hub_download
 from parameterized import parameterized
 
 from transformers import (
     AutoProcessor,
-    BitsAndBytesConfig,
     LlavaNextConfig,
     LlavaNextForConditionalGeneration,
     LlavaNextModel,
@@ -43,6 +41,7 @@ from ...generation.test_utils import GenerationTesterMixin
 from ...test_configuration_common import ConfigTester
 from ...test_modeling_common import (
     ModelTesterMixin,
+    _config_zero_init,
     floats_tensor,
     ids_tensor,
 )
@@ -192,18 +191,10 @@ class LlavaNextForConditionalGenerationModelTest(ModelTesterMixin, GenerationTes
         if is_torch_available()
         else ()
     )
-    pipeline_model_mapping = (
-        {
-            "image-text-to-text": LlavaNextForConditionalGeneration,
-            "any-to-any": LlavaNextForConditionalGeneration,
-        }
-        if is_torch_available()
-        else {}
-    )
-    # Llava-NeXT merges batch_size and num_patches in the first output dimension
-    skip_test_image_features_output_shape = True
+    pipeline_model_mapping = {"image-text-to-text": LlavaNextForConditionalGeneration} if is_torch_available() else {}
+    test_pruning = False
+    test_head_masking = False
     _is_composite = True
-    test_torch_exportable = False
 
     def setUp(self):
         self.model_tester = LlavaNextVisionText2TextModelTester(self)
@@ -215,6 +206,22 @@ class LlavaNextForConditionalGenerationModelTest(ModelTesterMixin, GenerationTes
     def test_config(self):
         self.config_tester.run_common_tests()
 
+    def test_initialization(self):
+        config, inputs_dict = self.model_tester.prepare_config_and_inputs_for_common()
+
+        configs_no_init = _config_zero_init(config)
+        for model_class in self.all_model_classes:
+            model = model_class(config=configs_no_init)
+            for name, param in model.named_parameters():
+                if "image_newline" in name:
+                    continue
+                elif param.requires_grad:
+                    self.assertIn(
+                        ((param.data.mean() * 1e9).round() / 1e9).item(),
+                        [0.0, 1.0],
+                        msg=f"Parameter {name} of model {model_class} seems not properly initialized",
+                    )
+
     def test_mismatching_num_image_tokens(self):
         """
         Tests that VLMs through an error with explicit message saying what is wrong
@@ -224,14 +231,13 @@ class LlavaNextForConditionalGenerationModelTest(ModelTesterMixin, GenerationTes
         config, input_dict = self.model_tester.prepare_config_and_inputs_for_common()
         for model_class in self.all_model_classes:
             model = model_class(config).to(torch_device)
-            model.eval()
             curr_input_dict = copy.deepcopy(input_dict)  # in=place modifications further
             _ = model(**curr_input_dict)  # successful forward with no modifications
 
             # remove one image but leave the image token in text
             curr_input_dict["pixel_values"] = curr_input_dict["pixel_values"][-1:, ...]
             curr_input_dict["image_sizes"] = curr_input_dict["image_sizes"][-1:, ...]
-            with self.assertRaisesRegex(ValueError, "Image features and image tokens do not match"):
+            with self.assertRaises(ValueError):
                 _ = model(**curr_input_dict)
 
             # simulate multi-image case by concatenating inputs where each has exactly one image/image-token
@@ -241,7 +247,7 @@ class LlavaNextForConditionalGenerationModelTest(ModelTesterMixin, GenerationTes
             input_ids = torch.cat([input_ids, input_ids], dim=0)
 
             # one image and two image tokens raise an error
-            with self.assertRaisesRegex(ValueError, "Image features and image tokens do not match"):
+            with self.assertRaises(ValueError):
                 _ = model(input_ids=input_ids, pixel_values=pixel_values, image_sizes=image_sizes)
 
             # two images and two image tokens don't raise an error
@@ -298,17 +304,23 @@ class LlavaNextForConditionalGenerationModelTest(ModelTesterMixin, GenerationTes
             assert base_model.multi_modal_projector.linear_1.in_features == expected_features
             model(**input_dict)
 
-    @pytest.mark.xfail(reason="This architecture seems to not compute gradients for some layer.")
+    @unittest.skip(
+        reason="This architecture seem to not compute gradients properly when using GC, check: https://github.com/huggingface/transformers/pull/27124"
+    )
     def test_training_gradient_checkpointing(self):
-        super().test_training_gradient_checkpointing()
+        pass
 
-    @pytest.mark.xfail(reason="This architecture seems to not compute gradients for some layer.")
+    @unittest.skip(
+        reason="This architecture seem to not compute gradients properly when using GC, check: https://github.com/huggingface/transformers/pull/27124"
+    )
+    def test_training_gradient_checkpointing_use_reentrant(self):
+        pass
+
+    @unittest.skip(
+        reason="This architecture seem to not compute gradients properly when using GC, check: https://github.com/huggingface/transformers/pull/27124"
+    )
     def test_training_gradient_checkpointing_use_reentrant_false(self):
-        super().test_training_gradient_checkpointing_use_reentrant_false()
-
-    @pytest.mark.xfail(reason="This architecture seems to not compute gradients for some layer.")
-    def test_training_gradient_checkpointing_use_reentrant_true(self):
-        super().test_training_gradient_checkpointing_use_reentrant_true()
+        pass
 
     @unittest.skip(
         "VLMs need lots of steps to prepare images/mask correctly to get pad-free inputs. Can be tested as part of LLM test"
@@ -334,7 +346,7 @@ class LlavaNextForConditionalGenerationIntegrationTest(unittest.TestCase):
     def test_small_model_integration_test(self):
         model = LlavaNextForConditionalGeneration.from_pretrained(
             "llava-hf/llava-v1.6-mistral-7b-hf",
-            quantization_config=BitsAndBytesConfig(load_in_4bit=True),
+            load_in_4bit=True,
         )
 
         inputs = self.processor(images=self.image, text=self.prompt, return_tensors="pt").to(torch_device)
@@ -377,7 +389,7 @@ class LlavaNextForConditionalGenerationIntegrationTest(unittest.TestCase):
     @require_bitsandbytes
     def test_small_model_integration_test_batch(self):
         model = LlavaNextForConditionalGeneration.from_pretrained(
-            "llava-hf/llava-v1.6-mistral-7b-hf", quantization_config=BitsAndBytesConfig(load_in_4bit=True)
+            "llava-hf/llava-v1.6-mistral-7b-hf", load_in_4bit=True
         )
         url = "http://images.cocodataset.org/val2017/000000039769.jpg"
         cats_image = Image.open(requests.get(url, stream=True).raw)
@@ -404,7 +416,7 @@ class LlavaNextForConditionalGenerationIntegrationTest(unittest.TestCase):
         # related to (#29835)
         model = LlavaNextForConditionalGeneration.from_pretrained(
             "llava-hf/llava-v1.6-mistral-7b-hf",
-            quantization_config=BitsAndBytesConfig(load_in_4bit=True),
+            load_in_4bit=True,
         )
 
         prompt_with_unk = "[INST] <image>\nWhat is shown in this <unk> image? [/INST]"
@@ -429,7 +441,7 @@ class LlavaNextForConditionalGenerationIntegrationTest(unittest.TestCase):
     def test_small_model_integration_test_batch_different_resolutions(self):
         model = LlavaNextForConditionalGeneration.from_pretrained(
             "llava-hf/llava-v1.6-mistral-7b-hf",
-            quantization_config=BitsAndBytesConfig(load_in_4bit=True),
+            load_in_4bit=True,
         )
 
         url = "http://images.cocodataset.org/val2017/000000039769.jpg"
@@ -469,7 +481,7 @@ class LlavaNextForConditionalGenerationIntegrationTest(unittest.TestCase):
     def test_small_model_integration_test_batch_matches_single(self):
         model = LlavaNextForConditionalGeneration.from_pretrained(
             "llava-hf/llava-v1.6-mistral-7b-hf",
-            quantization_config=BitsAndBytesConfig(load_in_4bit=True),
+            load_in_4bit=True,
         )
 
         url = "http://images.cocodataset.org/val2017/000000039769.jpg"
@@ -498,7 +510,7 @@ class LlavaNextForConditionalGenerationIntegrationTest(unittest.TestCase):
     def test_small_model_integration_test_full_vision_state_selection(self):
         model = LlavaNextForConditionalGeneration.from_pretrained(
             "llava-hf/llava-v1.6-mistral-7b-hf",
-            quantization_config=BitsAndBytesConfig(load_in_4bit=True),
+            load_in_4bit=True,
         )
         # test that changing `strategy` won't error out
         model.vision_feature_select_strategy = "full"

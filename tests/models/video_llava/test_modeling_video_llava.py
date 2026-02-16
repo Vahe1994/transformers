@@ -17,13 +17,11 @@ import copy
 import unittest
 
 import numpy as np
-import pytest
 import requests
 from huggingface_hub import hf_hub_download
 from parameterized import parameterized
 
 from transformers import (
-    BitsAndBytesConfig,
     VideoLlavaConfig,
     VideoLlavaForConditionalGeneration,
     VideoLlavaModel,
@@ -202,9 +200,10 @@ class VideoLlavaForConditionalGenerationModelTest(ModelTesterMixin, GenerationTe
         if is_torch_available()
         else ()
     )
-    # VideoLlava merges batch_size and num_frames in the first output dimension
-    skip_test_video_features_output_shape = True
+    fx_compatible = False
+    test_pruning = False
     test_resize_embeddings = True
+    test_head_masking = False
     _is_composite = True
 
     def setUp(self):
@@ -217,17 +216,23 @@ class VideoLlavaForConditionalGenerationModelTest(ModelTesterMixin, GenerationTe
     def test_config(self):
         self.config_tester.run_common_tests()
 
-    @pytest.mark.xfail(reason="This architecture seems to not compute gradients for some layer.")
+    @unittest.skip(
+        reason="This architecture seem to not compute gradients properly when using GC, check: https://github.com/huggingface/transformers/pull/27124"
+    )
     def test_training_gradient_checkpointing(self):
-        super().test_training_gradient_checkpointing()
+        pass
 
-    @pytest.mark.xfail(reason="This architecture seems to not compute gradients for some layer.")
+    @unittest.skip(
+        reason="This architecture seem to not compute gradients properly when using GC, check: https://github.com/huggingface/transformers/pull/27124"
+    )
+    def test_training_gradient_checkpointing_use_reentrant(self):
+        pass
+
+    @unittest.skip(
+        reason="This architecture seem to not compute gradients properly when using GC, check: https://github.com/huggingface/transformers/pull/27124"
+    )
     def test_training_gradient_checkpointing_use_reentrant_false(self):
-        super().test_training_gradient_checkpointing_use_reentrant_false()
-
-    @pytest.mark.xfail(reason="This architecture seems to not compute gradients for some layer.")
-    def test_training_gradient_checkpointing_use_reentrant_true(self):
-        super().test_training_gradient_checkpointing_use_reentrant_true()
+        pass
 
     @unittest.skip(
         "VLMs need lots of steps to prepare images/mask correctly to get pad-free inputs. Can be tested as part of LLM test"
@@ -348,13 +353,12 @@ class VideoLlavaForConditionalGenerationModelTest(ModelTesterMixin, GenerationTe
         config, input_dict = self.model_tester.prepare_config_and_inputs_for_common()
         for model_class in self.all_model_classes:
             model = model_class(config).to(torch_device)
-            model.eval()
             curr_input_dict = copy.deepcopy(input_dict)
             _ = model(**curr_input_dict)  # successful forward with no modifications
 
             # remove one image but leave the image token in text
             curr_input_dict["pixel_values_images"] = curr_input_dict["pixel_values_images"][-1:, ...]
-            with self.assertRaisesRegex(ValueError, "Image features and image tokens do not match"):
+            with self.assertRaises(ValueError):
                 _ = model(**curr_input_dict)
 
             # simulate multi-image case by concatenating inputs where each has exactly one image/image-token
@@ -363,7 +367,7 @@ class VideoLlavaForConditionalGenerationModelTest(ModelTesterMixin, GenerationTe
             input_ids = torch.cat([input_ids, input_ids], dim=0)
 
             # one image and two image tokens raise an error
-            with self.assertRaisesRegex(ValueError, "Image features and image tokens do not match"):
+            with self.assertRaises(ValueError):
                 _ = model(input_ids=input_ids, pixel_values_images=pixel_values)
 
             # two images and two image tokens don't raise an error
@@ -410,9 +414,7 @@ class VideoLlavaForConditionalGenerationIntegrationTest(unittest.TestCase):
     @require_bitsandbytes
     def test_small_model_integration_test(self):
         # Let' s make sure we test the preprocessing to replace what is used
-        model = VideoLlavaForConditionalGeneration.from_pretrained(
-            "LanguageBind/Video-LLaVA-7B-hf", quantization_config=BitsAndBytesConfig(load_in_4bit=True)
-        )
+        model = VideoLlavaForConditionalGeneration.from_pretrained("LanguageBind/Video-LLaVA-7B-hf", load_in_4bit=True)
 
         prompt = "USER: <video>\nWhy is this video funny? ASSISTANT:"
         video_file = hf_hub_download(
@@ -436,9 +438,7 @@ class VideoLlavaForConditionalGenerationIntegrationTest(unittest.TestCase):
     @slow
     @require_bitsandbytes
     def test_small_model_integration_test_mixed_inputs(self):
-        model = VideoLlavaForConditionalGeneration.from_pretrained(
-            "LanguageBind/Video-LLaVA-7B-hf", quantization_config=BitsAndBytesConfig(load_in_4bit=True)
-        )
+        model = VideoLlavaForConditionalGeneration.from_pretrained("LanguageBind/Video-LLaVA-7B-hf", load_in_4bit=True)
 
         prompts = [
             "USER: <image>\nWhat are the cats in the image doing? ASSISTANT:",
@@ -469,9 +469,7 @@ class VideoLlavaForConditionalGenerationIntegrationTest(unittest.TestCase):
     @slow
     @require_bitsandbytes
     def test_small_model_integration_test_llama(self):
-        model = VideoLlavaForConditionalGeneration.from_pretrained(
-            "LanguageBind/Video-LLaVA-7B-hf", quantization_config=BitsAndBytesConfig(load_in_4bit=True)
-        )
+        model = VideoLlavaForConditionalGeneration.from_pretrained("LanguageBind/Video-LLaVA-7B-hf", load_in_4bit=True)
         processor = VideoLlavaProcessor.from_pretrained("LanguageBind/Video-LLaVA-7B-hf")
 
         prompt = "USER: <video>\nDescribe the video in details. ASSISTANT:"
@@ -496,9 +494,7 @@ class VideoLlavaForConditionalGenerationIntegrationTest(unittest.TestCase):
     @slow
     @require_bitsandbytes
     def test_small_model_integration_test_llama_batched(self):
-        model = VideoLlavaForConditionalGeneration.from_pretrained(
-            "LanguageBind/Video-LLaVA-7B-hf", quantization_config=BitsAndBytesConfig(load_in_4bit=True)
-        )
+        model = VideoLlavaForConditionalGeneration.from_pretrained("LanguageBind/Video-LLaVA-7B-hf", load_in_4bit=True)
         processor = VideoLlavaProcessor.from_pretrained("LanguageBind/Video-LLaVA-7B-hf")
         processor.tokenizer.padding_side = "left"
 

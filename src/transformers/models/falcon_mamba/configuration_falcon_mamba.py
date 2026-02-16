@@ -4,6 +4,7 @@
 #             the file from the modular. If any change should be done, please apply the change to the
 #                          modular_falcon_mamba.py file directly. One of our CI enforces this.
 #                🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨
+# coding=utf-8
 # Copyright 2024 Tri Dao, Albert Gu, Technological Innovation Institute and HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,18 +21,18 @@
 
 import math
 
-from ...configuration_utils import PreTrainedConfig
+from ...configuration_utils import PretrainedConfig
 
 
-class FalconMambaConfig(PreTrainedConfig):
+class FalconMambaConfig(PretrainedConfig):
     """
     This is the configuration class to store the configuration of a [`FalconMambaModel`]. It is used to instantiate a FALCON_MAMBA
     model according to the specified arguments, defining the model architecture. Instantiating a configuration with the
     defaults will yield a similar configuration to that of the FALCON_MAMBA
     [tiiuae/falcon-mamba-7b](https://huggingface.co/tiiuae/falcon-mamba-7b) architecture.
 
-    Configuration objects inherit from [`PreTrainedConfig`] and can be used to control the model outputs. Read the
-    documentation from [`PreTrainedConfig`] for more information.
+    Configuration objects inherit from [`PretrainedConfig`] and can be used to control the model outputs. Read the
+    documentation from [`PretrainedConfig`] for more information.
 
 
     Args:
@@ -84,8 +85,6 @@ class FalconMambaConfig(PreTrainedConfig):
             Determines the fallback strategy during training if the CUDA-based official implementation of Mamba is not available. If `True`, the mamba.py implementation is used. If `False`, the naive and slower implementation is used. Consider switching to the naive version if memory is limited.
         mixer_rms_eps (`float`, *optional*, defaults to 1e-06):
             The RMS norm epsilon value that is used in the Mixer RMS norm for B, C and dt states.
-        tie_word_embeddings (`bool`, *optional*, defaults to `True`):
-            Whether to tie weight embeddings
 
 
     Example:
@@ -132,9 +131,9 @@ class FalconMambaConfig(PreTrainedConfig):
         use_cache=True,
         use_falcon_mambapy=False,
         mixer_rms_eps=1e-6,
-        tie_word_embeddings=True,
         **kwargs,
     ):
+        super().__init__(bos_token_id=bos_token_id, eos_token_id=eos_token_id, pad_token_id=pad_token_id, **kwargs)
         self.vocab_size = vocab_size
         self.hidden_size = hidden_size
         self.state_size = state_size
@@ -165,9 +164,6 @@ class FalconMambaConfig(PreTrainedConfig):
         self.residual_in_fp32 = residual_in_fp32
         self.use_cache = use_cache
         self.use_falcon_mambapy = use_falcon_mambapy
-        self.tie_word_embeddings = tie_word_embeddings
-
-        super().__init__(**kwargs)
         self.mixer_rms_eps = mixer_rms_eps
 
 

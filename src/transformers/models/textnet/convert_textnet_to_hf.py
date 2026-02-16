@@ -1,3 +1,4 @@
+# coding=utf-8
 # Copyright 2024 the Fast authors and The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,9 +18,8 @@ import json
 import logging
 import re
 from collections import OrderedDict
-from io import BytesIO
 
-import httpx
+import requests
 import torch
 from huggingface_hub import hf_hub_download
 from PIL import Image
@@ -41,7 +41,7 @@ rename_key_mappings = {
 
 
 def prepare_config(size_config_url, size):
-    config_dict = httpx.get(size_config_url).json()
+    config_dict = json.loads(requests.get(size_config_url).text)
 
     backbone_config = {}
     for stage_ix in range(1, 5):
@@ -162,8 +162,7 @@ def convert_textnet_checkpoint(checkpoint_url, checkpoint_config_filename, pytor
     model.eval()
 
     url = "http://images.cocodataset.org/val2017/000000039769.jpg"
-    with httpx.stream("GET", url) as response:
-        image = Image.open(BytesIO(response.read())).convert("RGB")
+    image = Image.open(requests.get(url, stream=True).raw).convert("RGB")
 
     original_pixel_values = torch.tensor(
         [0.1939, 0.3481, 0.4166, 0.3309, 0.4508, 0.4679, 0.4851, 0.4851, 0.3309, 0.4337]

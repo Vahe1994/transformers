@@ -80,10 +80,10 @@ LLM（Language Model）による自己回帰生成の重要な側面の1つは�
 
 
 ```py
->>> from transformers import AutoModelForCausalLM, BitsAndBytesConfig
+>>> from transformers import AutoModelForCausalLM
 
 >>> model = AutoModelForCausalLM.from_pretrained(
-...     "openlm-research/open_llama_7b", device_map="auto", quantization_config=BitsAndBytesConfig(load_in_4bit=True)
+...     "openlm-research/open_llama_7b", device_map="auto", load_in_4bit=True
 ... )
 ```
 
@@ -101,7 +101,7 @@ LLM（Language Model）による自己回帰生成の重要な側面の1つは�
 >>> from transformers import AutoTokenizer
 
 >>> tokenizer = AutoTokenizer.from_pretrained("openlm-research/open_llama_7b")
->>> model_inputs = tokenizer(["A list of colors: red, blue"], return_tensors="pt").to(model.device)
+>>> model_inputs = tokenizer(["A list of colors: red, blue"], return_tensors="pt").to("cuda")
 ```
 
 
@@ -123,12 +123,12 @@ LLM（Language Model）による自己回帰生成の重要な側面の1つは�
 [生成戦略](generation_strategies)はたくさんあり、デフォルトの値があなたのユースケースに適していないことがあります。出力が期待通りでない場合、最も一般的な落とし穴とその回避方法のリストを作成しました。
 
 ```py
->>> from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+>>> from transformers import AutoModelForCausalLM, AutoTokenizer
 
 >>> tokenizer = AutoTokenizer.from_pretrained("openlm-research/open_llama_7b")
 >>> tokenizer.pad_token = tokenizer.eos_token  # Llama has no pad token by default
 >>> model = AutoModelForCausalLM.from_pretrained(
-...     "openlm-research/open_llama_7b", device_map="auto", quantization_config=BitsAndBytesConfig(load_in_4bit=True)
+...     "openlm-research/open_llama_7b", device_map="auto", load_in_4bit=True
 ... )
 ```
 
@@ -137,7 +137,7 @@ LLM（Language Model）による自己回帰生成の重要な側面の1つは�
 [`~generation.GenerationConfig`] ファイルで指定されていない場合、`generate` はデフォルトで最大で 20 トークンまで返します。我々は `generate` コールで `max_new_tokens` を手動で設定することを強くお勧めします。これにより、返される新しいトークンの最大数を制御できます。LLM（正確には、[デコーダー専用モデル](https://huggingface.co/learn/nlp-course/chapter1/6?fw=pt)）も出力の一部として入力プロンプトを返すことに注意してください。
 
 ```py
->>> model_inputs = tokenizer(["A sequence of numbers: 1, 2"], return_tensors="pt").to(model.device)
+>>> model_inputs = tokenizer(["A sequence of numbers: 1, 2"], return_tensors="pt").to("cuda")
 
 >>> # By default, the output will contain up to 20 tokens
 >>> generated_ids = model.generate(**model_inputs)
@@ -159,7 +159,7 @@ LLM（Language Model）による自己回帰生成の重要な側面の1つは�
 >>> from transformers import set_seed
 >>> set_seed(0)
 
->>> model_inputs = tokenizer(["I am a cat."], return_tensors="pt").to(model.device)
+>>> model_inputs = tokenizer(["I am a cat."], return_tensors="pt").to("cuda")
 
 >>> # LLM + greedy decoding = repetitive, boring output
 >>> generated_ids = model.generate(**model_inputs)
@@ -182,7 +182,7 @@ LLM（Large Language Models）は[デコーダー専用](https://huggingface.co/
 >>> # which is shorter, has padding on the right side. Generation fails.
 >>> model_inputs = tokenizer(
 ...     ["1, 2, 3", "A, B, C, D, E"], padding=True, return_tensors="pt"
-... ).to(model.device)
+... ).to("cuda")
 >>> generated_ids = model.generate(**model_inputs)
 >>> tokenizer.batch_decode(generated_ids[0], skip_special_tokens=True)[0]
 ''
@@ -192,7 +192,7 @@ LLM（Large Language Models）は[デコーダー専用](https://huggingface.co/
 >>> tokenizer.pad_token = tokenizer.eos_token  # Llama has no pad token by default
 >>> model_inputs = tokenizer(
 ...     ["1, 2, 3", "A, B, C, D, E"], padding=True, return_tensors="pt"
-... ).to(model.device)
+... ).to("cuda")
 >>> generated_ids = model.generate(**model_inputs)
 >>> tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
 '1, 2, 3, 4, 5, 6,'

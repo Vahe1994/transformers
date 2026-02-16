@@ -1,5 +1,5 @@
 import json
-from typing import Any
+from typing import Any, Optional
 
 import torch
 import torch.nn as nn
@@ -112,7 +112,7 @@ class Int8SymmetricConfig(QuantizationConfigMixin):
     Configuration for INT8 symmetric quantization.
     """
 
-    def __init__(self, modules_to_not_convert: list[str] | None = None, **kwargs):
+    def __init__(self, modules_to_not_convert: Optional[list[str]] = None, **kwargs):
         self.quant_method = "int8_symmetric"
         self.modules_to_not_convert = modules_to_not_convert
 
@@ -159,13 +159,24 @@ class Int8SymmetricQuantizer(HfQuantizer):
             pre_quantized=self.pre_quantized,
         )
 
-    def param_needs_quantization(self, model, param_name: str, **kwargs) -> bool:
+    def check_quantized_param(
+        self,
+        model,
+        param_value: "torch.Tensor",
+        param_name: str,
+        state_dict: dict[str, Any],
+        **kwargs,
+    ):
         module, tensor_name = get_module_from_name(model, param_name)
 
         if isinstance(module, Int8SymmetricLinear):
             if self.pre_quantized or tensor_name == "bias":
+                if tensor_name == "weight" and param_value.dtype != torch.int8:
+                    raise ValueError("Expect quantized weights but got an unquantized weight")
                 return False
             else:
+                if tensor_name == "weight_scale":
+                    raise ValueError("Expect unquantized weights but got a quantized weight_scale")
                 return True
         return False
 
@@ -175,18 +186,12 @@ class Int8SymmetricQuantizer(HfQuantizer):
         param_value: "torch.Tensor",
         param_name: str,
         target_device: "torch.device",
-        **kwargs,
+        state_dict: dict[str, Any],
+        unexpected_keys: Optional[list[str]] = None,
     ):
-        # Sanity check
-        module, tensor_name = get_module_from_name(model, param_name)
-        if isinstance(module, Int8SymmetricLinear):
-            if self.pre_quantized or tensor_name == "bias":
-                if tensor_name == "weight" and param_value.dtype != torch.int8:
-                    raise ValueError("Expect quantized weights but got an unquantized weight")
-            else:
-                if tensor_name == "weight_scale":
-                    raise ValueError("Expect unquantized weights but got a quantized weight_scale")
-
+        """
+        Quantizes weights to INT8 symmetric format.
+        """
         abs_max_per_row = torch.max(torch.abs(param_value), dim=1, keepdim=True)[0].clamp(min=1e-5)
 
         weight_scale = abs_max_per_row / 127.0
@@ -216,7 +221,7 @@ class Int8SymmetricQuantizer(HfQuantizer):
         """
         return True
 
-    def is_serializable(self):
+    def is_serializable(self, safe_serialization=None):
         return True
 
     @property
@@ -227,7 +232,7 @@ class Int8SymmetricQuantizer(HfQuantizer):
 # Example usage
 if __name__ == "__main__":
     model_int8 = AutoModelForCausalLM.from_pretrained(
-        "meta-llama/Llama-3.2-1B", quantization_config=Int8SymmetricConfig(), dtype=torch.float, device_map="cpu"
+        "meta-llama/Llama-3.2-1B", quantization_config=Int8SymmetricConfig(), torch_dtype=torch.float, device_map="cpu"
     )
 
     tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.2-1B")

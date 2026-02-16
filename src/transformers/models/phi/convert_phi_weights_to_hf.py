@@ -1,3 +1,4 @@
+# coding=utf-8
 # Copyright 2023 Microsoft and the HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -135,7 +136,7 @@ def convert_phi_weights(
             config.resid_pdrop = 0.1
             config.partial_rotary_factor = 0.4
             config.num_hidden_layers = 32
-            config.dtype = "float16"
+            config.torch_dtype = "float16"
 
         # Converting the weights
         converted_checkpoint.update(**convert_weights(model_checkpoint, PHI_MAPPING, config))

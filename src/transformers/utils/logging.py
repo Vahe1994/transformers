@@ -20,22 +20,23 @@ import sys
 import threading
 from logging import (
     CRITICAL,  # NOQA
-    DEBUG,
-    ERROR,
+    DEBUG,  # NOQA
+    ERROR,  # NOQA
     FATAL,  # NOQA
-    INFO,
+    INFO,  # NOQA
     NOTSET,  # NOQA
     WARN,  # NOQA
-    WARNING,
+    WARNING,  # NOQA
 )
 from logging import captureWarnings as _captureWarnings
+from typing import Optional
 
 import huggingface_hub.utils as hf_hub_utils
 from tqdm import auto as tqdm_lib
 
 
 _lock = threading.Lock()
-_default_handler: logging.Handler | None = None
+_default_handler: Optional[logging.Handler] = None
 
 log_levels = {
     "detail": logging.DEBUG,  # will also print filename and line number
@@ -143,7 +144,7 @@ def captureWarnings(capture):
     _captureWarnings(capture)
 
 
-def get_logger(name: str | None = None) -> logging.Logger:
+def get_logger(name: Optional[str] = None) -> logging.Logger:
     """
     Return a logger with the specified name.
 
@@ -306,7 +307,7 @@ def warning_advice(self, *args, **kwargs):
     This method is identical to `logger.warning()`, but if env var TRANSFORMERS_NO_ADVISORY_WARNINGS=1 is set, this
     warning will not be printed
     """
-    no_advisory_warnings = os.getenv("TRANSFORMERS_NO_ADVISORY_WARNINGS")
+    no_advisory_warnings = os.getenv("TRANSFORMERS_NO_ADVISORY_WARNINGS", False)
     if no_advisory_warnings:
         return
     self.warning(*args, **kwargs)
@@ -391,6 +392,7 @@ tqdm = _tqdm_cls()
 
 def is_progress_bar_enabled() -> bool:
     """Return a boolean indicating whether tqdm progress bars are enabled."""
+    global _tqdm_active
     return bool(_tqdm_active)
 
 

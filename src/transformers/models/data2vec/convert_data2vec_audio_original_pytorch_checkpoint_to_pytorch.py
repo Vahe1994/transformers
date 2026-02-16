@@ -1,3 +1,4 @@
+# coding=utf-8
 # Copyright 2021 The HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -257,7 +258,7 @@ def convert_wav2vec2_checkpoint(
     max_absolute_diff = torch.max(torch.abs(our_output - their_output)).item()
     print(f"max_absolute_diff = {max_absolute_diff}")  # ~ 1e-7
     success = torch.allclose(our_output, their_output, atol=1e-3)
-    print("Do both models output the same tensors?", "[PASS]" if success else "[FAIL]")
+    print("Do both models output the same tensors?", "🔥" if success else "💩")
     if not success:
         raise Exception("Something went wRoNg")
 

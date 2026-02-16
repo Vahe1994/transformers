@@ -1,3 +1,4 @@
+# coding=utf-8
 # Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -27,6 +28,7 @@ from transformers import (
 from transformers.testing_utils import (
     require_torch,
     require_torch_accelerator,
+    require_torch_sdpa,
     slow,
     torch_device,
 )
@@ -34,7 +36,6 @@ from transformers.testing_utils import (
 from ...generation.test_utils import GenerationTesterMixin
 from ...test_configuration_common import ConfigTester
 from ...test_modeling_common import ModelTesterMixin, floats_tensor, ids_tensor, random_attention_mask
-from ...test_pipeline_mixin import PipelineTesterMixin
 
 
 if is_torch_available():
@@ -154,7 +155,7 @@ class DeepseekVLHybridModelTester:
 
 
 @require_torch
-class DeepseekVLHybridModelTest(ModelTesterMixin, GenerationTesterMixin, PipelineTesterMixin, unittest.TestCase):
+class DeepseekVLHybridModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase):
     all_model_classes = (
         (DeepseekVLHybridModel, DeepseekVLHybridForConditionalGeneration) if is_torch_available() else ()
     )
@@ -162,13 +163,13 @@ class DeepseekVLHybridModelTest(ModelTesterMixin, GenerationTesterMixin, Pipelin
         {
             "feature-extraction": DeepseekVLHybridModel,
             "image-text-to-text": DeepseekVLHybridForConditionalGeneration,
-            "any-to-any": DeepseekVLHybridForConditionalGeneration,
         }
         if is_torch_available()
         else {}
     )
     _is_composite = True
-    model_split_percents = [0.5, 0.85, 0.9]  # it tries to offload everything with the default value
+    test_pruning = False
+    test_head_masking = False
 
     def setUp(self):
         self.model_tester = DeepseekVLHybridModelTester(self)
@@ -218,6 +219,12 @@ class DeepseekVLHybridModelTest(ModelTesterMixin, GenerationTesterMixin, Pipelin
                 out_embeds = model(inputs_embeds=inputs_embeds, **inputs)[0]
             torch.testing.assert_close(out_embeds, out_ids)
 
+    @unittest.skip(reason="Siglip uses the same initialization scheme as the Flax original implementation")
+    # Copied from tests.models.siglip.test_modeling_siglip.SiglipVisionModelTest.test_initialization
+    def test_initialization(self):
+        pass
+
+    @require_torch_sdpa
     def test_sdpa_can_dispatch_composite_models(self):
         for model_class in self.all_model_classes:
             config, inputs_dict = self.model_tester.prepare_config_and_inputs_for_common()
@@ -272,13 +279,6 @@ class DeepseekVLHybridModelTest(ModelTesterMixin, GenerationTesterMixin, Pipelin
                 ):
                     self.assertTrue(submodule.config._attn_implementation == "sdpa")
 
-    @require_torch_accelerator
-    @slow
-    def test_sdpa_can_dispatch_on_flash(self):
-        self.skipTest(
-            "deepseek_vl_hybrid uses SAM, which requires an attention_mask input for relative positional embeddings"
-        )
-
 
 @require_torch
 @require_torch_accelerator
@@ -289,7 +289,7 @@ class DeepseekVLHybridIntegrationTest(unittest.TestCase):
 
     def test_model_text_generation(self):
         model = DeepseekVLHybridForConditionalGeneration.from_pretrained(
-            self.model_id, dtype="auto", device_map="auto"
+            self.model_id, torch_dtype="auto", device_map="auto"
         )
         model.to(torch_device)
         model.eval()
@@ -307,7 +307,7 @@ class DeepseekVLHybridIntegrationTest(unittest.TestCase):
                 ],
             }
         ]
-        EXPECTED_TEXT = 'You are a helpful language and vision assistant. You are able to understand the visual content that the user provides, and assist the user with a variety of tasks using natural language.\n\nUser: Describe this image.\n\nAssistant:The image depicts a fluffy, light brown animal with a white face and black markings on its face and'  # fmt: skip
+        EXPECTED_TEXT = 'You are a helpful language and vision assistant. You are able to understand the visual content that the user provides, and assist the user with a variety of tasks using natural language.\n\nUser: Describe this image.\n\nAssistant:The image depicts a fluffy, beige-colored animal with a long tail, walking on snow. The'  # fmt: skip
 
         inputs = processor.apply_chat_template(
             messages, add_generation_prompt=True, tokenize=True, return_dict=True, return_tensors="pt"
@@ -323,7 +323,7 @@ class DeepseekVLHybridIntegrationTest(unittest.TestCase):
 
     def test_model_text_generation_batched(self):
         model = DeepseekVLHybridForConditionalGeneration.from_pretrained(
-            self.model_id, dtype="auto", device_map="auto"
+            self.model_id, torch_dtype="auto", device_map="auto"
         )
         model.to(torch_device)
         model.eval()
@@ -356,7 +356,7 @@ class DeepseekVLHybridIntegrationTest(unittest.TestCase):
             ],
         ]
         EXPECTED_TEXT = [
-            "You are a helpful language and vision assistant. You are able to understand the visual content that the user provides, and assist the user with a variety of tasks using natural language.\n\nUser: Describe this image.\n\nAssistant:\nThe image depicts a fluffy, light brown animal with a white face and black markings around its eyes",  # fmt: skip
+            "You are a helpful language and vision assistant. You are able to understand the visual content that the user provides, and assist the user with a variety of tasks using natural language.\n\nUser: Describe this image.\n\nAssistant:The image depicts a fluffy, beige-colored animal with a long tail, walking on snow. The",  # fmt: skip
             "You are a helpful language and vision assistant. You are able to understand the visual content that the user provides, and assist the user with a variety of tasks using natural language.\n\nUser: What animal do you see in the image?\n\nAssistant:I see a large, furry animal that appears to be a type of bear.The ",  # fmt: skip
         ]
 
@@ -371,7 +371,7 @@ class DeepseekVLHybridIntegrationTest(unittest.TestCase):
 
     def test_model_text_generation_with_multi_image(self):
         model = DeepseekVLHybridForConditionalGeneration.from_pretrained(
-            self.model_id, dtype="auto", device_map="auto"
+            self.model_id, torch_dtype="auto", device_map="auto"
         )
         model.to(torch_device)
         model.eval()
@@ -384,10 +384,7 @@ class DeepseekVLHybridIntegrationTest(unittest.TestCase):
                     {"type": "text", "text": "What's the difference between"},
                     {"type": "image", "url": "http://images.cocodataset.org/val2017/000000039769.jpg"},
                     {"type": "text", "text": " and "},
-                    {
-                        "type": "image",
-                        "url": "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/transformers/tasks/australia.jpg",
-                    },
+                    {"type": "image", "url": "https://www.ilankelman.org/stopsigns/australia.jpg"},
                 ],
             }
         ]

@@ -1,3 +1,4 @@
+# coding=utf-8
 # Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,8 +18,10 @@ import gc
 import json
 import os
 import re
+from typing import Optional
 
 import torch
+from accelerate import init_empty_weights
 from huggingface_hub import snapshot_download
 
 from transformers import EomtConfig, EomtForUniversalSegmentation, EomtImageProcessorFast
@@ -115,7 +118,7 @@ def convert_state_dict_to_hf(state_dict):
 
 
 def ensure_model_downloaded(
-    repo_id: str | None = None, revision: str | None = None, local_dir: str | None = None
+    repo_id: Optional[str] = None, revision: Optional[str] = None, local_dir: Optional[str] = None
 ) -> str:
     """
     Ensures model files are downloaded locally, downloads them if not.
@@ -190,6 +193,7 @@ def convert_model(
     local_dir=None,
     output_dir=None,
     output_hub_path=None,
+    safe_serialization=True,
     revision=None,
 ):
     """Convert and save the model weights, processor, and configuration."""
@@ -252,7 +256,7 @@ def convert_model(
 
     # Initialize model with empty weights
     print("Creating empty model...")
-    with torch.device("meta"):
+    with init_empty_weights():
         model = EomtForUniversalSegmentation(config)
 
     # Load and convert state dict
@@ -267,10 +271,10 @@ def convert_model(
     # Save the model
     if output_dir:
         print(f"Saving model to {output_dir}...")
-        model.save_pretrained(output_dir)
+        model.save_pretrained(output_dir, safe_serialization=safe_serialization)
     if output_hub_path:
         print(f"Pushing model to hub at {output_hub_path}...")
-        model.push_to_hub(output_hub_path)
+        model.push_to_hub(output_hub_path, safe_serialization=safe_serialization)
 
     del state_dict, model
     gc.collect()
@@ -309,6 +313,11 @@ def main():
         help="Repository ID to push model to hub (e.g. 'username/model-name')",
         default=None,
     )
+    parser.add_argument(
+        "--safe_serialization",
+        action="store_true",
+        help="Whether to save using safetensors",
+    )
     args = parser.parse_args()
 
     if args.output_dir is None and args.output_hub_path is None:
@@ -322,6 +331,7 @@ def main():
         local_dir=args.local_dir,
         output_dir=args.output_dir,
         output_hub_path=args.output_hub_path,
+        safe_serialization=args.safe_serialization,
         revision=args.revision,
     )
 

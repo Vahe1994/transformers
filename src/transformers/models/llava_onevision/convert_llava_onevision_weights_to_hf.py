@@ -22,11 +22,11 @@ import argparse
 import gc
 import glob
 import json
-from io import BytesIO
 from pathlib import Path
 
-import httpx
+import requests
 import torch
+from accelerate import init_empty_weights
 from huggingface_hub import hf_hub_download, snapshot_download
 from PIL import Image
 from safetensors import safe_open
@@ -91,8 +91,7 @@ def convert_state_dict_to_hf(state_dict):
 
 def load_image():
     url = "https://github.com/haotian-liu/LLaVA/blob/1a91fc274d7c35a9b50b3cb29c4247ae5837ce39/images/llava_v1_5_radar.jpg?raw=true"
-    with httpx.stream("GET", url) as response:
-        image = Image.open(BytesIO(response.read()))
+    image = Image.open(requests.get(url, stream=True).raw)
     return image
 
 
@@ -154,7 +153,7 @@ def convert_llava_to_hf(model_id, pytorch_dump_folder_path, push_to_hub=False):
         use_image_newline_parameter=True,
     )
 
-    with torch.device("meta"):
+    with init_empty_weights():
         model = LlavaOnevisionForConditionalGeneration(config)
 
     # load original state dict
@@ -197,7 +196,7 @@ def convert_llava_to_hf(model_id, pytorch_dump_folder_path, push_to_hub=False):
     # Load everything back for inference tests in float32 because prev script was written as that
     # Though it's mostly loaded in fp16 as original weights are in fp16
     model = LlavaOnevisionForConditionalGeneration.from_pretrained(
-        pytorch_dump_folder_path, dtype="float16", device_map="auto"
+        pytorch_dump_folder_path, torch_dtype="float16", device_map="auto"
     )
     processor = LlavaOnevisionProcessor.from_pretrained(pytorch_dump_folder_path)
     device = model.device
@@ -323,8 +322,7 @@ def convert_llava_to_hf(model_id, pytorch_dump_folder_path, push_to_hub=False):
     # verify batched generation
     print("Batched generation...")
     url = "http://images.cocodataset.org/val2017/000000039769.jpg"
-    with httpx.stream("GET", url) as response:
-        cats_image = Image.open(BytesIO(response.read()))
+    cats_image = Image.open(requests.get(url, stream=True).raw)
 
     inputs = processor(
         images=[image, cats_image],
@@ -381,9 +379,7 @@ if __name__ == "__main__":
         "--pytorch_dump_folder_path", type=str, required=True, help="Path to the output PyTorch model directory."
     )
     parser.add_argument(
-        "--push_to_hub",
-        action="store_true",
-        help="Whether or not to push the converted model to the Hugging Face hub.",
+        "--push_to_hub", action="store_true", help="Whether or not to push the converted model to the 🤗 hub."
     )
     args = parser.parse_args()
 

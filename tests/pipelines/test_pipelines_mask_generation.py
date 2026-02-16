@@ -19,6 +19,7 @@ from huggingface_hub.utils import insecure_hashlib
 
 from transformers import (
     MODEL_FOR_MASK_GENERATION_MAPPING,
+    is_tf_available,
     is_torch_available,
     is_vision_available,
     pipeline,
@@ -33,6 +34,11 @@ from transformers.testing_utils import (
     slow,
 )
 
+
+if is_tf_available():
+    from transformers import TF_MODEL_FOR_MASK_GENERATION_MAPPING
+else:
+    TF_MODEL_FOR_MASK_GENERATION_MAPPING = None
 
 if is_torch_available():
     from transformers import MODEL_FOR_MASK_GENERATION_MAPPING
@@ -66,6 +72,9 @@ def mask_to_test_readable(mask: Image) -> dict:
 @require_torch
 class MaskGenerationPipelineTests(unittest.TestCase):
     model_mapping = dict(list(MODEL_FOR_MASK_GENERATION_MAPPING.items()) if MODEL_FOR_MASK_GENERATION_MAPPING else [])
+    tf_model_mapping = dict(
+        list(TF_MODEL_FOR_MASK_GENERATION_MAPPING.items()) if TF_MODEL_FOR_MASK_GENERATION_MAPPING else []
+    )
 
     def get_test_pipeline(
         self,
@@ -74,7 +83,7 @@ class MaskGenerationPipelineTests(unittest.TestCase):
         image_processor=None,
         feature_extractor=None,
         processor=None,
-        dtype="float32",
+        torch_dtype="float32",
     ):
         image_segmenter = MaskGenerationPipeline(
             model=model,
@@ -82,7 +91,7 @@ class MaskGenerationPipelineTests(unittest.TestCase):
             feature_extractor=feature_extractor,
             image_processor=image_processor,
             processor=processor,
-            dtype=dtype,
+            torch_dtype=torch_dtype,
         )
         return image_segmenter, [
             "./tests/fixtures/tests_samples/COCO/000000039769.png",
@@ -101,19 +110,18 @@ class MaskGenerationPipelineTests(unittest.TestCase):
         outputs = image_segmenter("http://images.cocodataset.org/val2017/000000039769.jpg", points_per_batch=256)
 
         # Shortening by hashing
-        new_output = []
+        new_outupt = []
         for i, o in enumerate(outputs["masks"]):
-            new_output += [{"mask": mask_to_test_readable(o), "scores": outputs["scores"][i]}]
+            new_outupt += [{"mask": mask_to_test_readable(o), "scores": outputs["scores"][i]}]
 
         # fmt: off
         last_output = Expectations({
-            ("xpu", None): {'mask': {'hash': 'b5f47c9191', 'shape': (480, 640)}, 'scores': 0.8872},
             ("cuda", None): {'mask': {'hash': 'b5f47c9191', 'shape': (480, 640)}, 'scores': 0.8871},
             ("rocm", (9, 5)): {'mask': {'hash': 'b5f47c9191', 'shape': (480, 640)}, 'scores': 0.8872}
         }).get_expectation()
 
         self.assertEqual(
-            nested_simplify(new_output, decimals=4),
+            nested_simplify(new_outupt, decimals=4),
             [
                 {'mask': {'hash': '115ad19f5f', 'shape': (480, 640)}, 'scores': 1.0444},
                 {'mask': {'hash': '6affa964c6', 'shape': (480, 640)}, 'scores': 1.021},
@@ -160,12 +168,12 @@ class MaskGenerationPipelineTests(unittest.TestCase):
         )
 
         # Shortening by hashing
-        new_output = []
+        new_outupt = []
         for i, o in enumerate(outputs["masks"]):
-            new_output += [{"mask": mask_to_test_readable(o), "scores": outputs["scores"][i]}]
+            new_outupt += [{"mask": mask_to_test_readable(o), "scores": outputs["scores"][i]}]
 
         self.assertEqual(
-            nested_simplify(new_output, decimals=4),
+            nested_simplify(new_outupt, decimals=4),
             [
                 {"mask": {"hash": "115ad19f5f", "shape": (480, 640)}, "scores": 1.0444},
                 {"mask": {"hash": "6affa964c6", "shape": (480, 640)}, "scores": 1.0210},

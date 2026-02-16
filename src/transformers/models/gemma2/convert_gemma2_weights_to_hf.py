@@ -16,6 +16,7 @@ import os
 import warnings
 
 import torch
+from accelerate import init_empty_weights
 
 from transformers import Gemma2Config, Gemma2ForCausalLM, GemmaTokenizer
 
@@ -80,7 +81,7 @@ CONFIG_MAPPING = {"9B": gemma_9b_config, "27B": gemma_27b_config}
 LAYER_NAME_MAPPING = {"embedder.weight": "model.embed_tokens.weight"}
 
 
-def write_model(save_path, input_base_path, config, push_to_hub=False, dtype=torch.float32):
+def write_model(save_path, input_base_path, config, safe_serialization=True, push_to_hub=False, dtype=torch.float32):
     num_attn_heads = config.num_attention_heads
     hidden_size = config.hidden_size
     num_kv_heads = config.num_key_value_heads
@@ -142,19 +143,19 @@ def write_model(save_path, input_base_path, config, push_to_hub=False, dtype=tor
     torch.set_default_dtype(dtype)
 
     print("Loading the checkpoint in a Gemma2 model.")
-    with torch.device("meta"):
+    with init_empty_weights():
         model = Gemma2ForCausalLM(config)
     model.load_state_dict(state_dict, assign=True, strict=False)
 
-    model.config.dtype = torch.float32
+    model.config.torch_dtype = torch.float32
     del model.config._name_or_path
     print("Saving in the Transformers format.")
 
     if push_to_hub:
         print(f"pushing the model to {save_path}")
-        model.push_to_hub(save_path, private=True)
+        model.push_to_hub(save_path, safe_serialization=safe_serialization, private=True)
     else:
-        model.save_pretrained(save_path)
+        model.save_pretrained(save_path, safe_serialization=safe_serialization)
 
 
 def write_tokenizer(input_tokenizer_path, save_path, push_to_hub=False):
@@ -191,6 +192,12 @@ def main():
         help="Location to write HF model and tokenizer",
     )
     parser.add_argument(
+        "--pickle_serialization",
+        help="Whether or not to save using `safetensors`.",
+        action="store_true",
+        default=False,
+    )
+    parser.add_argument(
         "--convert_tokenizer",
         help="Whether or not to convert the tokenizer as well.",
         action="store_true",
@@ -222,6 +229,7 @@ def main():
             config=config,
             input_base_path=args.input_checkpoint,
             save_path=args.output_dir,
+            safe_serialization=not args.pickle_serialization,
             push_to_hub=args.push_to_hub,
             dtype=dtype,
         )

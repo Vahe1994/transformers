@@ -321,12 +321,12 @@ La lunghezza dei campioni adesso coincide con la massima lunghezza impostata nel
 
 Un estrattore di caratteristiche si può usare anche per processare immagini e per compiti di visione. Ancora una volta, l'obiettivo è convertire l'immagine grezza in un lotto di tensori come input.
 
-Carica il dataset [food101](https://huggingface.co/datasets/ethz/food101) per questa esercitazione. Usa il parametro `split` di 🤗 Datasets  per caricare solo un piccolo campione dal dataset di addestramento poichè il set di dati è molto grande:
+Carica il dataset [food101](https://huggingface.co/datasets/food101) per questa esercitazione. Usa il parametro `split` di 🤗 Datasets  per caricare solo un piccolo campione dal dataset di addestramento poichè il set di dati è molto grande:
 
 ```py
 >>> from datasets import load_dataset
 
->>> dataset = load_dataset("ethz/food101", split="train[:100]")
+>>> dataset = load_dataset("food101", split="train[:100]")
 ```
 
 Secondo passo, dai uno sguardo alle immagini usando la caratteristica [`Image`](https://huggingface.co/docs/datasets/package_reference/main_classes.html?highlight=image#datasets.Image) di 🤗 Datasets:

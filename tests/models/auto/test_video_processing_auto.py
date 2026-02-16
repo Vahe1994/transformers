@@ -1,3 +1,4 @@
+# coding=utf-8
 # Copyright 2025 the HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -82,7 +83,7 @@ class AutoVideoProcessorTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdirname:
             model_config = LlavaOnevisionConfig()
 
-            # Create a dummy config file with image_processor_type
+            # Create a dummy config file with image_proceesor_type
             processor_tmpfile = Path(tmpdirname) / "video_preprocessor_config.json"
             config_tmpfile = Path(tmpdirname) / "config.json"
             json.dump(
@@ -142,7 +143,7 @@ class AutoVideoProcessorTest(unittest.TestCase):
     def test_video_processor_not_found(self):
         with self.assertRaisesRegex(
             EnvironmentError,
-            "Can't load video processor for 'hf-internal-testing/config-no-model'.",
+            "hf-internal-testing/config-no-model does not appear to have a file named preprocessor_config.json.",
         ):
             _ = AutoVideoProcessor.from_pretrained("hf-internal-testing/config-no-model")
 

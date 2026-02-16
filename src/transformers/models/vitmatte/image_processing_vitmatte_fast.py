@@ -1,3 +1,4 @@
+# coding=utf-8
 # Copyright 2025 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,14 +14,12 @@
 # limitations under the License.
 """Fast Image processor class for ViTMatte."""
 
-from typing import Union
-
-import torch
-import torchvision.transforms.v2.functional as tvF
+from typing import Optional, Union
 
 from ...image_processing_utils import BatchFeature
 from ...image_processing_utils_fast import (
     BaseImageProcessorFast,
+    DefaultFastImageProcessorKwargs,
     group_images_by_shape,
     reorder_images,
 )
@@ -36,52 +35,75 @@ from ...utils import (
     TensorType,
     auto_docstring,
     filter_out_non_signature_kwargs,
+    is_torch_available,
+    is_torchvision_available,
+    is_torchvision_v2_available,
     logging,
 )
-from .image_processing_vitmatte import VitMatteImageProcessorKwargs
+
+
+if is_torch_available():
+    import torch
+
+if is_torchvision_available():
+    if is_torchvision_v2_available():
+        from torchvision.transforms.v2 import functional as F
+    else:
+        from torchvision.transforms import functional as F
 
 
 logger = logging.get_logger(__name__)
 
 
+class VitMatteFastImageProcessorKwargs(DefaultFastImageProcessorKwargs):
+    """
+    do_pad (`bool`, *optional*, defaults to `True`):
+        Whether to pad the image to make the width and height divisible by `size_divisibility`. Can be overridden
+        by the `do_pad` parameter in the `preprocess` method.
+    size_divisibility (`int`, *optional*, defaults to 32):
+        The width and height of the image will be padded to be divisible by this number.
+    """
+
+    do_pad: Optional[bool]
+    size_divisibility: int
+
+
 @auto_docstring
 class VitMatteImageProcessorFast(BaseImageProcessorFast):
     do_rescale: bool = True
-    rescale_factor: int | float = 1 / 255
+    rescale_factor: Union[int, float] = 1 / 255
     do_normalize: bool = True
-    image_mean: float | list[float] | None = IMAGENET_STANDARD_MEAN
-    image_std: float | list[float] | None = IMAGENET_STANDARD_STD
+    image_mean: Optional[Union[float, list[float]]] = IMAGENET_STANDARD_MEAN
+    image_std: Optional[Union[float, list[float]]] = IMAGENET_STANDARD_STD
     do_pad: bool = True
-    size_divisor: int = 32
-    valid_kwargs = VitMatteImageProcessorKwargs
+    size_divisibility: int = 32
+    valid_kwargs = VitMatteFastImageProcessorKwargs
 
-    def __init__(self, **kwargs: Unpack[VitMatteImageProcessorKwargs]) -> None:
-        size_divisibility = kwargs.pop("size_divisibility", None)
-        kwargs.setdefault("size_divisor", size_divisibility)
+    def __init__(self, **kwargs: Unpack[VitMatteFastImageProcessorKwargs]) -> None:
         super().__init__(**kwargs)
 
     def _pad_image(
         self,
-        images: torch.Tensor,
-        size_divisor: int = 32,
-    ) -> torch.Tensor:
+        images: "torch.tensor",
+        size_divisibility: int = 32,
+    ) -> "torch.tensor":
         """
-        Pads an image or batched images constantly so that width and height are divisible by size_divisor
+        Pads an image or batched images constantly so that width and height are divisible by size_divisibility
 
         Args:
-            image (`torch.Tensor`):
+            image (`torch,tensor`):
                 Image to pad.
-            size_divisor (`int`, *optional*, defaults to 32):
+            size_divisibility (`int`, *optional*, defaults to 32):
                 The width and height of the image will be padded to be divisible by this number.
         """
         height, width = get_image_size(images, channel_dim=ChannelDimension.FIRST)
 
-        pad_height = 0 if height % size_divisor == 0 else size_divisor - height % size_divisor
-        pad_width = 0 if width % size_divisor == 0 else size_divisor - width % size_divisor
+        pad_height = 0 if height % size_divisibility == 0 else size_divisibility - height % size_divisibility
+        pad_width = 0 if width % size_divisibility == 0 else size_divisibility - width % size_divisibility
 
         if pad_width + pad_height > 0:
             padding = (0, 0, pad_width, pad_height)
-            images = tvF.pad(images, padding)
+            images = F.pad(images, padding)
 
         return images
 
@@ -90,7 +112,7 @@ class VitMatteImageProcessorFast(BaseImageProcessorFast):
         self,
         images: list["torch.Tensor"],
         trimaps: list["torch.Tensor"],
-        **kwargs: Unpack[VitMatteImageProcessorKwargs],
+        **kwargs: Unpack[VitMatteFastImageProcessorKwargs],
     ) -> BatchFeature:
         r"""
         trimaps (`list[torch.Tensor]`):
@@ -104,8 +126,8 @@ class VitMatteImageProcessorFast(BaseImageProcessorFast):
         trimaps: ImageInput,
         do_convert_rgb: bool,
         input_data_format: ChannelDimension,
-        device: Union[str, "torch.device"] | None = None,
-        **kwargs: Unpack[VitMatteImageProcessorKwargs],
+        device: Optional[Union[str, "torch.device"]] = None,
+        **kwargs: Unpack[VitMatteFastImageProcessorKwargs],
     ) -> BatchFeature:
         """
         Preprocess image-like inputs.
@@ -122,15 +144,16 @@ class VitMatteImageProcessorFast(BaseImageProcessorFast):
         self,
         images: list["torch.Tensor"],
         trimaps: list["torch.Tensor"],
-        do_rescale: bool | None = None,
-        rescale_factor: float | None = None,
-        do_normalize: bool | None = None,
-        image_mean: float | list[float] | None = None,
-        image_std: float | list[float] | None = None,
-        do_pad: bool | None = None,
-        size_divisor: int | None = None,
-        disable_grouping: bool | None = None,
-        return_tensors: str | TensorType | None = None,
+        do_rescale: Optional[bool] = None,
+        rescale_factor: Optional[float] = None,
+        do_normalize: Optional[bool] = None,
+        image_mean: Optional[Union[float, list[float]]] = None,
+        image_std: Optional[Union[float, list[float]]] = None,
+        do_pad: Optional[bool] = None,
+        size_divisibility: Optional[int] = None,
+        disable_grouping: Optional[bool] = None,
+        return_tensors: Optional[Union[str, TensorType]] = None,
+        **kwargs,
     ) -> BatchFeature:
         grouped_images, grouped_images_index = group_images_by_shape(images, disable_grouping=disable_grouping)
         grouped_trimaps, grouped_trimaps_index = group_images_by_shape(trimaps, disable_grouping=disable_grouping)
@@ -147,10 +170,11 @@ class VitMatteImageProcessorFast(BaseImageProcessorFast):
             )
             stacked_images = torch.cat([stacked_images, stacked_trimaps], dim=1)
             if do_pad:
-                stacked_images = self._pad_image(stacked_images, size_divisor)
+                stacked_images = self._pad_image(stacked_images, self.size_divisibility)
             processed_images_grouped[shape] = stacked_images
 
         processed_images = reorder_images(processed_images_grouped, grouped_images_index)
+        processed_images = torch.stack(processed_images, dim=0) if return_tensors else processed_images
 
         return BatchFeature(data={"pixel_values": processed_images}, tensor_type=return_tensors)
 

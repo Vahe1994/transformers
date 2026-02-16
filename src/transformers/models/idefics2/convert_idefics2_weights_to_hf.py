@@ -16,6 +16,7 @@ import argparse
 import copy
 
 import torch
+from accelerate import init_empty_weights
 
 from transformers import (
     AutoConfig,
@@ -145,7 +146,7 @@ def convert_idefics2_hub_to_hf(original_model_id, output_hub_path, push_to_hub):
 
     config = get_config(original_model_id)
 
-    with torch.device("meta"):
+    with init_empty_weights():
         model = Idefics2ForConditionalGeneration(config)
 
     model.load_state_dict(state_dict, strict=True, assign=True)

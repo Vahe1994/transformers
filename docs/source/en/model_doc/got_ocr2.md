@@ -13,7 +13,6 @@ specific language governing permissions and limitations under the License.
 rendered properly in your Markdown viewer.
 
 -->
-*This model was released on 2024-09-03 and added to Hugging Face Transformers on 2025-01-31.*
 
 # GOT-OCR2
 
@@ -34,6 +33,7 @@ alt="drawing" width="600"/>
 
 <small> GOT-OCR2 training stages. Taken from the <a href="https://huggingface.co/papers/2409.01704">original paper.</a> </small>
 
+
 Tips:
 
 GOT-OCR2 works on a wide range of tasks, including plain document OCR, scene text OCR, formatted document OCR, and even OCR for tables, charts, mathematical formulas, geometric shapes, molecular formulas and sheet music. While this implementation of the model will only output plain text, the outputs can be further processed to render the desired format, with packages like `pdftex`, `mathpix`, `matplotlib`, `tikz`, `verovio` or `pyecharts`.
@@ -47,11 +47,10 @@ The original code can be found [here](https://github.com/Ucas-HaoranWei/GOT-OCR2
 ### Plain text inference
 
 ```python
->>> import torch
 >>> from transformers import AutoProcessor, AutoModelForImageTextToText
-from accelerate import Accelerator
+>>> import torch
 
->>> device = Accelerator().device
+>>> device = "cuda" if torch.cuda.is_available() else "cpu"
 >>> model = AutoModelForImageTextToText.from_pretrained("stepfun-ai/GOT-OCR-2.0-hf", device_map=device)
 >>> processor = AutoProcessor.from_pretrained("stepfun-ai/GOT-OCR-2.0-hf", use_fast=True)
 
@@ -73,11 +72,10 @@ from accelerate import Accelerator
 ### Plain text inference batched
 
 ```python
->>> import torch
 >>> from transformers import AutoProcessor, AutoModelForImageTextToText
-from accelerate import Accelerator
+>>> import torch
 
->>> device = Accelerator().device
+>>> device = "cuda" if torch.cuda.is_available() else "cpu"
 >>> model = AutoModelForImageTextToText.from_pretrained("stepfun-ai/GOT-OCR-2.0-hf", device_map=device)
 >>> processor = AutoProcessor.from_pretrained("stepfun-ai/GOT-OCR-2.0-hf", use_fast=True)
 
@@ -103,11 +101,10 @@ from accelerate import Accelerator
 GOT-OCR2 can also generate formatted text, such as markdown or LaTeX. Here is an example of how to generate formatted text:
 
 ```python
->>> import torch
 >>> from transformers import AutoProcessor, AutoModelForImageTextToText
-from accelerate import Accelerator
+>>> import torch
 
->>> device = Accelerator().device
+>>> device = "cuda" if torch.cuda.is_available() else "cpu"
 >>> model = AutoModelForImageTextToText.from_pretrained("stepfun-ai/GOT-OCR-2.0-hf", device_map=device)
 >>> processor = AutoProcessor.from_pretrained("stepfun-ai/GOT-OCR-2.0-hf", use_fast=True)
 
@@ -128,15 +125,15 @@ from accelerate import Accelerator
 
 ### Inference on multiple pages
 
-Although it might be reasonable in most cases to use a “for loop” for multi-page processing, some text data with formatting across several pages make it necessary to process all pages at once. GOT introduces a multi-page OCR (without “for loop”) feature, where multiple pages can be processed by the model at once, with the output being one continuous text.
+Although it might be reasonable in most cases to use a “for loop” for multi-page processing, some text data with formatting across several pages make it necessary to process all pages at once. GOT introduces a multi-page OCR (without “for loop”) feature, where multiple pages can be processed by the model at once, whith the output being one continuous text.
 Here is an example of how to process multiple pages at once:
 
-```python
->>> import torch
->>> from transformers import AutoProcessor, AutoModelForImageTextToText
-from accelerate import Accelerator
 
->>> device = Accelerator().device
+```python
+>>> from transformers import AutoProcessor, AutoModelForImageTextToText
+>>> import torch
+
+>>> device = "cuda" if torch.cuda.is_available() else "cpu"
 >>> model = AutoModelForImageTextToText.from_pretrained("stepfun-ai/GOT-OCR-2.0-hf", device_map=device)
 >>> processor = AutoProcessor.from_pretrained("stepfun-ai/GOT-OCR-2.0-hf", use_fast=True)
 
@@ -164,10 +161,10 @@ Here is an example of how to process cropped patches:
 ```python
 >>> import torch
 >>> from transformers import AutoProcessor, AutoModelForImageTextToText
-from accelerate import Accelerator
+>>> import torch
 
->>> device = Accelerator().device
->>> model = AutoModelForImageTextToText.from_pretrained("stepfun-ai/GOT-OCR-2.0-hf", dtype=torch.bfloat16, device_map=device)
+>>> device = "cuda" if torch.cuda.is_available() else "cpu"
+>>> model = AutoModelForImageTextToText.from_pretrained("stepfun-ai/GOT-OCR-2.0-hf", torch_dtype=torch.bfloat16, device_map=device)
 >>> processor = AutoProcessor.from_pretrained("stepfun-ai/GOT-OCR-2.0-hf", use_fast=True)
 
 >>> image = "https://huggingface.co/datasets/hf-internal-testing/fixtures_got_ocr/resolve/main/one_column.png"
@@ -190,10 +187,10 @@ from accelerate import Accelerator
 GOT supports interactive OCR, where the user can specify the region to be recognized by providing the coordinates or the color of the region's bounding box. Here is an example of how to process a specific region:
 
 ```python
->>> import torch
 >>> from transformers import AutoProcessor, AutoModelForImageTextToText
+>>> import torch
 
->>> device = Accelerator().device
+>>> device = "cuda" if torch.cuda.is_available() else "cpu"
 >>> model = AutoModelForImageTextToText.from_pretrained("stepfun-ai/GOT-OCR-2.0-hf", device_map=device)
 >>> processor = AutoProcessor.from_pretrained("stepfun-ai/GOT-OCR-2.0-hf", use_fast=True)
 
@@ -218,12 +215,11 @@ Although this implementation of the model will only output plain text, the outpu
 Here is an example of how to process sheet music:
 
 ```python
->>> import torch
 >>> from transformers import AutoProcessor, AutoModelForImageTextToText
-from accelerate import Accelerator
+>>> import torch
 >>> import verovio
 
->>> device = Accelerator().device
+>>> device = "cuda" if torch.cuda.is_available() else "cpu"
 >>> model = AutoModelForImageTextToText.from_pretrained("stepfun-ai/GOT-OCR-2.0-hf", device_map=device)
 >>> processor = AutoProcessor.from_pretrained("stepfun-ai/GOT-OCR-2.0-hf", use_fast=True)
 
@@ -258,7 +254,6 @@ from accelerate import Accelerator
 >>> with open("output.svg", "w") as f:
 >>>     f.write(svg)
 ```
-
 <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/transformers/sheet_music.svg"
 alt="drawing" width="600"/>
 
@@ -281,7 +276,6 @@ alt="drawing" width="600"/>
 ## GotOcr2Processor
 
 [[autodoc]] GotOcr2Processor
-    - __call__
 
 ## GotOcr2Model
 
@@ -291,4 +285,4 @@ alt="drawing" width="600"/>
 
 [[autodoc]] GotOcr2ForConditionalGeneration
     - forward
-    - get_image_features
+

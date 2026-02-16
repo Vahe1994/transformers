@@ -152,6 +152,8 @@ pip install datasets
 
 قم بتعيين معلمة `return_tensors` إلى إما `pt` لـ PyTorch، أو `tf` لـ TensorFlow:
 
+<frameworkcontent>
+<pt>
 
 ```py
 >>> batch_sentences = [
@@ -171,6 +173,33 @@ pip install datasets
                            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
                            [1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0]])}
 ```
+</pt>
+<tf>
+ 
+```py
+>>> batch_sentences = [
+...     "But what about second breakfast?",
+...     "Don't think he knows about second breakfast, Pip.",
+...     "What about elevensies?",
+... ]
+>>> encoded_input = tokenizer(batch_sentences, padding=True, truncation=True, return_tensors="tf")
+>>> print(encoded_input)
+{'input_ids': <tf.Tensor: shape=(2, 9), dtype=int32, numpy=
+array([[101, 1252, 1184, 1164, 1248, 6462, 136, 102, 0, 0, 0, 0, 0, 0, 0],
+       [101, 1790, 112, 189, 1341, 1119, 3520, 1164, 1248, 6462, 117, 21902, 1643, 119, 102],
+       [101, 1327, 1164, 5450, 23434, 136, 102, 0, 0, 0, 0, 0, 0, 0, 0]],
+      dtype=int32)>,
+ 'token_type_ids': <tf.Tensor: shape=(2, 9), dtype=int32, numpy=
+array([[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+       [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+       [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]], dtype=int32)>,
+ 'attention_mask': <tf.Tensor: shape=(2, 9), dtype=int32, numpy=
+array([[1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0],
+       [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+       [1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0]], dtype=int32)>}
+```
+</tf>
+</frameworkcontent>
 
 <Tip>
 
@@ -302,7 +331,7 @@ pip install datasets
 
 </Tip>
 
-قم بتحميل مجموعة بيانات [food101](https://huggingface.co/datasets/ethz/food101) (راجع دليل 🤗 [Datasets tutorial](https://huggingface.co/docs/datasets/load_hub) لمزيد من التفاصيل حول كيفية تحميل مجموعة بيانات) لمعرفة كيف يمكنك استخدام معالج الصور مع مجموعات بيانات رؤية الحاسب:
+قم بتحميل مجموعة بيانات [food101](https://huggingface.co/datasets/food101) (راجع دليل 🤗 [Datasets tutorial](https://huggingface.co/docs/datasets/load_hub) لمزيد من التفاصيل حول كيفية تحميل مجموعة بيانات) لمعرفة كيف يمكنك استخدام معالج الصور مع مجموعات بيانات رؤية الحاسب:
 
 <Tip>
 
@@ -313,7 +342,7 @@ pip install datasets
 ```py
 >>> from datasets import load_dataset
 
->>> dataset = load_dataset("ethz/food101", split="train[:100]")
+>>> dataset = load_dataset("food101", split="train[:100]")
 ```
 
 بعد ذلك، الق نظرة على الصورة مع ميزة 🤗 Datasets [`Image`](https://huggingface.co/docs/datasets/package_reference/main_classes?highlight=image#datasets.Image):

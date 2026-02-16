@@ -15,12 +15,13 @@
 
 import unittest
 
-import pytest
+from packaging import version
+from parameterized import parameterized
 
-from transformers import OlmoConfig, is_torch_available
+from transformers import OlmoConfig, is_torch_available, set_seed
 from transformers.generation.configuration_utils import GenerationConfig
 from transformers.models.auto.tokenization_auto import AutoTokenizer
-from transformers.models.gpt_neox.tokenization_gpt_neox import GPTNeoXTokenizer as GPTNeoXTokenizerFast
+from transformers.models.gpt_neox.tokenization_gpt_neox_fast import GPTNeoXTokenizerFast
 from transformers.testing_utils import (
     require_tokenizers,
     require_torch,
@@ -170,6 +171,8 @@ class OlmoModelTest(ModelTesterMixin, GenerationTesterMixin, PipelineTesterMixin
         if is_torch_available()
         else {}
     )
+    test_pruning = False
+    fx_compatible = False
 
     # Need to use `0.8` instead of `0.9` for `test_cpu_offload`
     # This is because we are hitting edge cases with the causal_mask buffer
@@ -185,6 +188,47 @@ class OlmoModelTest(ModelTesterMixin, GenerationTesterMixin, PipelineTesterMixin
     def test_model(self):
         config_and_inputs = self.model_tester.prepare_config_and_inputs()
         self.model_tester.create_and_check_model(*config_and_inputs)
+
+    @unittest.skip(reason="OLMo does not support head pruning.")
+    def test_headmasking(self):
+        pass
+
+    def test_model_various_embeddings(self):
+        config_and_inputs = self.model_tester.prepare_config_and_inputs()
+        for type in ["absolute", "relative_key", "relative_key_query"]:
+            config_and_inputs[0].position_embedding_type = type
+            self.model_tester.create_and_check_model(*config_and_inputs)
+
+    @parameterized.expand([("linear",), ("dynamic",)])
+    def test_model_rope_scaling(self, scaling_type):
+        config, _ = self.model_tester.prepare_config_and_inputs_for_common()
+        short_input = ids_tensor([1, 10], config.vocab_size)
+        long_input = ids_tensor([1, int(config.max_position_embeddings * 1.5)], config.vocab_size)
+
+        set_seed(42)  # Fixed seed at init time so the two models get the same random weights
+        original_model = OlmoModel(config)
+        original_model.to(torch_device)
+        original_model.eval()
+        original_short_output = original_model(short_input).last_hidden_state
+        original_long_output = original_model(long_input).last_hidden_state
+
+        set_seed(42)  # Fixed seed at init time so the two models get the same random weights
+        config.rope_scaling = {"type": scaling_type, "factor": 10.0}
+        scaled_model = OlmoModel(config)
+        scaled_model.to(torch_device)
+        scaled_model.eval()
+        scaled_short_output = scaled_model(short_input).last_hidden_state
+        scaled_long_output = scaled_model(long_input).last_hidden_state
+
+        # Dynamic scaling does not change the RoPE embeddings until it receives an input longer than the original
+        # maximum sequence length, so the outputs for the short input should match.
+        if scaling_type == "dynamic":
+            torch.testing.assert_close(original_short_output, scaled_short_output, rtol=1e-5, atol=1e-5)
+        else:
+            self.assertFalse(torch.allclose(original_short_output, scaled_short_output, atol=1e-5))
+
+        # The output should be different for long inputs
+        self.assertFalse(torch.allclose(original_long_output, scaled_long_output, atol=1e-5))
 
 
 @require_torch
@@ -256,7 +300,7 @@ class OlmoIntegrationTest(unittest.TestCase):
 
     @require_tokenizers
     def test_simple_encode_decode(self):
-        rust_tokenizer = GPTNeoXTokenizerFast.from_pretrained("allenai/OLMo-1B-hf", add_eos_token=False)
+        rust_tokenizer = GPTNeoXTokenizerFast.from_pretrained("allenai/OLMo-1B-hf")
 
         self.assertEqual(rust_tokenizer.encode("This is a test"), [1552, 310, 247, 1071])
         self.assertEqual(rust_tokenizer.decode([1552, 310, 247, 1071], skip_special_tokens=True), "This is a test")
@@ -270,10 +314,10 @@ class OlmoIntegrationTest(unittest.TestCase):
 
         # Inner spaces showcase
         self.assertEqual(rust_tokenizer.encode("Hi  Hello"), [12764, 50276, 12092])
-        self.assertEqual(rust_tokenizer.decode([12764, 50276, 12092], skip_special_tokens=False), "Hi  Hello")
+        self.assertEqual(rust_tokenizer.decode([12764, 50276, 12092], skip_special_tokens=True), "Hi  Hello")
 
         self.assertEqual(rust_tokenizer.encode("Hi   Hello"), [12764, 50275, 12092])
-        self.assertEqual(rust_tokenizer.decode([12764, 50275, 12092], skip_special_tokens=False), "Hi   Hello")
+        self.assertEqual(rust_tokenizer.decode([12764, 50275, 12092], skip_special_tokens=True), "Hi   Hello")
 
         self.assertEqual(rust_tokenizer.encode(""), [])
 
@@ -283,9 +327,11 @@ class OlmoIntegrationTest(unittest.TestCase):
 
         self.assertEqual(rust_tokenizer.encode(" Hello"), [24387])
 
-    @pytest.mark.torch_export_test
     @slow
     def test_export_static_cache(self):
+        if version.parse(torch.__version__) < version.parse("2.4.0"):
+            self.skipTest(reason="This test requires torch >= 2.4 to run.")
+
         from transformers.integrations.executorch import (
             TorchExportableModuleWithStaticCache,
         )
@@ -309,7 +355,7 @@ class OlmoIntegrationTest(unittest.TestCase):
         model = OlmoForCausalLM.from_pretrained(
             olmo_model,
             device_map=device,
-            dtype=dtype,
+            torch_dtype=dtype,
             attn_implementation=attn_implementation,
             generation_config=GenerationConfig(
                 use_cache=True,
@@ -338,10 +384,7 @@ class OlmoIntegrationTest(unittest.TestCase):
         from transformers.integrations.executorch import TorchExportableModuleForDecoderOnlyLM
 
         exportable_module = TorchExportableModuleForDecoderOnlyLM(model)
-        exported_program = exportable_module.export(
-            input_ids=torch.tensor([[1]], dtype=torch.long, device=model.device),
-            cache_position=torch.tensor([0], dtype=torch.long, device=model.device),
-        )
+        exported_program = exportable_module.export()
         ep_generated_ids = TorchExportableModuleWithStaticCache.generate(
             exported_program=exported_program, prompt_token_ids=prompt_token_ids, max_new_tokens=max_new_tokens
         )

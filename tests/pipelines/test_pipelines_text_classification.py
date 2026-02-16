@@ -16,6 +16,7 @@ import unittest
 
 from transformers import (
     MODEL_FOR_SEQUENCE_CLASSIFICATION_MAPPING,
+    TF_MODEL_FOR_SEQUENCE_CLASSIFICATION_MAPPING,
     TextClassificationPipeline,
     pipeline,
 )
@@ -44,13 +45,20 @@ _TO_SKIP = {"LayoutLMv2Config", "LayoutLMv3Config"}
 @is_pipeline_test
 class TextClassificationPipelineTests(unittest.TestCase):
     model_mapping = MODEL_FOR_SEQUENCE_CLASSIFICATION_MAPPING
+    tf_model_mapping = TF_MODEL_FOR_SEQUENCE_CLASSIFICATION_MAPPING
 
     if not hasattr(model_mapping, "is_dummy"):
         model_mapping = {config: model for config, model in model_mapping.items() if config.__name__ not in _TO_SKIP}
+    if not hasattr(tf_model_mapping, "is_dummy"):
+        tf_model_mapping = {
+            config: model for config, model in tf_model_mapping.items() if config.__name__ not in _TO_SKIP
+        }
 
     @require_torch
     def test_small_model_pt(self):
-        text_classifier = pipeline(task="text-classification", model="hf-internal-testing/tiny-random-distilbert")
+        text_classifier = pipeline(
+            task="text-classification", model="hf-internal-testing/tiny-random-distilbert", framework="pt"
+        )
 
         outputs = text_classifier("This is great !")
         self.assertEqual(nested_simplify(outputs), [{"label": "LABEL_0", "score": 0.504}])
@@ -72,6 +80,33 @@ class TextClassificationPipelineTests(unittest.TestCase):
         outputs = text_classifier("This is great !", top_k=1)
         self.assertEqual(nested_simplify(outputs), [{"label": "LABEL_0", "score": 0.504}])
 
+        # Legacy behavior
+        outputs = text_classifier("This is great !", return_all_scores=False)
+        self.assertEqual(nested_simplify(outputs), [{"label": "LABEL_0", "score": 0.504}])
+
+        outputs = text_classifier("This is great !", return_all_scores=True)
+        self.assertEqual(
+            nested_simplify(outputs), [[{"label": "LABEL_0", "score": 0.504}, {"label": "LABEL_1", "score": 0.496}]]
+        )
+
+        outputs = text_classifier(["This is great !", "Something else"], return_all_scores=True)
+        self.assertEqual(
+            nested_simplify(outputs),
+            [
+                [{"label": "LABEL_0", "score": 0.504}, {"label": "LABEL_1", "score": 0.496}],
+                [{"label": "LABEL_0", "score": 0.504}, {"label": "LABEL_1", "score": 0.496}],
+            ],
+        )
+
+        outputs = text_classifier(["This is great !", "Something else"], return_all_scores=False)
+        self.assertEqual(
+            nested_simplify(outputs),
+            [
+                {"label": "LABEL_0", "score": 0.504},
+                {"label": "LABEL_0", "score": 0.504},
+            ],
+        )
+
         # Do not apply any function to output for regression tasks
         # hack: changing problem_type artificially (so keep this test at last)
         text_classifier.model.config.problem_type = "regression"
@@ -83,6 +118,7 @@ class TextClassificationPipelineTests(unittest.TestCase):
         text_classifier = pipeline(
             task="text-classification",
             model="hf-internal-testing/tiny-random-distilbert",
+            framework="pt",
             device=torch_device,
         )
 
@@ -94,8 +130,9 @@ class TextClassificationPipelineTests(unittest.TestCase):
         text_classifier = pipeline(
             task="text-classification",
             model="hf-internal-testing/tiny-random-distilbert",
+            framework="pt",
             device=torch_device,
-            dtype=torch.float16,
+            torch_dtype=torch.float16,
         )
 
         outputs = text_classifier("This is great !")
@@ -106,8 +143,9 @@ class TextClassificationPipelineTests(unittest.TestCase):
         text_classifier = pipeline(
             task="text-classification",
             model="hf-internal-testing/tiny-random-distilbert",
+            framework="pt",
             device=torch_device,
-            dtype=torch.bfloat16,
+            torch_dtype=torch.bfloat16,
         )
 
         outputs = text_classifier("This is great !")
@@ -132,7 +170,7 @@ class TextClassificationPipelineTests(unittest.TestCase):
         image_processor=None,
         feature_extractor=None,
         processor=None,
-        dtype="float32",
+        torch_dtype="float32",
     ):
         text_classifier = TextClassificationPipeline(
             model=model,
@@ -140,7 +178,7 @@ class TextClassificationPipelineTests(unittest.TestCase):
             feature_extractor=feature_extractor,
             image_processor=image_processor,
             processor=processor,
-            dtype=dtype,
+            torch_dtype=torch_dtype,
         )
         return text_classifier, ["HuggingFace is in", "This is another test"]
 

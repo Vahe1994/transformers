@@ -47,10 +47,8 @@ limitations under the License.
         <a href="https://github.com/huggingface/transformers/blob/main/i18n/README_te.md">తెలుగు</a> |
         <a href="https://github.com/huggingface/transformers/blob/main/i18n/README_fr.md">Français</a> |
         <a href="https://github.com/huggingface/transformers/blob/main/i18n/README_de.md">Deutsch</a> |
-        <a href="https://github.com/huggingface/transformers/blob/main/i18n/README_it.md">Italiano</a> |
         <a href="https://github.com/huggingface/transformers/blob/main/i18n/README_vi.md">Tiếng Việt</a> |
         <a href="https://github.com/huggingface/transformers/blob/main/i18n/README_ar.md">العربية</a> |
-        <a href="https://github.com/huggingface/transformers/blob/main/i18n/README_bn.md">বাংলা</a> |
         <b>اردو</b> |
     </p>
 </h4>
@@ -261,7 +259,7 @@ limitations under the License.
 
 #### &#8207; pip کے ساتھ
 
-یہ ریپوزٹری Python 3.10+ اور PyTorch 2.4+ پر ٹیسٹ کی گئی ہے۔
+یہ ریپوزٹری Python 3.9+، Flax 0.4.1+، PyTorch 2.1+، اور TensorFlow 2.6+ پر ٹیسٹ کی گئی ہے۔
 
 آپ کو 🤗 Transformers کو ایک [ورچوئل ماحول](https://docs.python.org/3/library/venv.html) میں انسٹال کرنا چاہیے۔ اگر آپ Python ورچوئل ماحول سے واقف نہیں ہیں، تو [یوزر گائیڈ](https://packaging.python.org/guides/installing-using-pip-and-virtual-environments/) دیکھیں۔
 

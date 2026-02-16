@@ -1,3 +1,4 @@
+# coding=utf-8
 # Copyright 2024 The HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,9 +17,8 @@
 URL: https://github.com/om-ai-lab/OmDet"""
 
 import argparse
-from io import BytesIO
 
-import httpx
+import requests
 import torch
 from PIL import Image
 
@@ -237,11 +237,10 @@ def read_in_q_k_v_decoder(state_dict, config):
 def run_test(model, processor):
     # We will verify our results on an image of cute cats
     url = "http://images.cocodataset.org/val2017/000000039769.jpg"
-    with httpx.stream("GET", url) as response:
-        image = Image.open(BytesIO(response.read())).convert("RGB")
+    image = Image.open(requests.get(url, stream=True).raw).convert("RGB")
 
     classes = ["cat", "remote"]
-    task = f"Detect {', '.join(classes)}."
+    task = "Detect {}.".format(", ".join(classes))
     inputs = processor(image, text=classes, task=task, return_tensors="pt")
 
     # Running forward
@@ -340,9 +339,7 @@ if __name__ == "__main__":
         "--pytorch_dump_folder_path", default=None, type=str, help="Path to the output PyTorch model directory."
     )
     parser.add_argument(
-        "--push_to_hub",
-        action="store_true",
-        help="Whether or not to push the converted model to the Hugging Face hub.",
+        "--push_to_hub", action="store_true", help="Whether or not to push the converted model to the 🤗 hub."
     )
     parser.add_argument(
         "--use_timm_backbone", action="store_true", help="Whether or not to use timm backbone for vision backbone."

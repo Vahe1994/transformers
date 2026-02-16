@@ -321,12 +321,12 @@ Las longitudes de las dos primeras muestras coinciden ahora con la longitud máx
 
 También se utiliza un extractor de características para procesar imágenes para tareas de visión por computadora. Una vez más, el objetivo es convertir la imagen en bruto en un batch de tensores como entrada.
 
-Vamos a cargar el dataset [food101](https://huggingface.co/datasets/ethz/food101) para este tutorial. Usa el parámetro 🤗 Datasets `split` para cargar solo una pequeña muestra de la división de entrenamiento ya que el dataset es bastante grande:
+Vamos a cargar el dataset [food101](https://huggingface.co/datasets/food101) para este tutorial. Usa el parámetro 🤗 Datasets `split` para cargar solo una pequeña muestra de la división de entrenamiento ya que el dataset es bastante grande:
 
 ```py
 >>> from datasets import load_dataset
 
->>> dataset = load_dataset("ethz/food101", split="train[:100]")
+>>> dataset = load_dataset("food101", split="train[:100]")
 ```
 
 A continuación, observa la imagen con la función 🤗 Datasets [`Image`](https://huggingface.co/docs/datasets/package_reference/main_classes?highlight=image#datasets.Image):

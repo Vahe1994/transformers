@@ -1,3 +1,4 @@
+# coding=utf-8
 # Copyright 2023 The HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,8 +21,8 @@ import json
 import os.path
 from collections import OrderedDict
 
-import httpx
 import numpy as np
+import requests
 import torch
 from flax.training.checkpoints import restore_checkpoint
 from huggingface_hub import hf_hub_download
@@ -34,9 +35,9 @@ def download_checkpoint(path):
     url = "https://storage.googleapis.com/scenic-bucket/vivit/kinetics_400/vivit_base_16x2_unfactorized/checkpoint"
 
     with open(path, "wb") as f:
-        with httpx.stream("GET", url) as resp:
-            resp.raise_for_status()
-            f.writelines(resp.iter_bytes(chunk_size=2048))
+        with requests.get(url, stream=True) as req:
+            for chunk in req.iter_content(chunk_size=2048):
+                f.write(chunk)
 
 
 def get_vivit_config() -> VivitConfig:
@@ -128,7 +129,7 @@ def transform_state_encoder_block(state_dict, i):
 
 
 def get_n_layers(state_dict):
-    return sum(1 if "encoderblock_" in k else 0 for k in state_dict["optimizer"]["target"]["Transformer"])
+    return sum([1 if "encoderblock_" in k else 0 for k in state_dict["optimizer"]["target"]["Transformer"]])
 
 
 def transform_state(state_dict, classification_head=False):

@@ -1,3 +1,4 @@
+# coding=utf-8
 # Copyright 2023 The HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,10 +15,9 @@
 """Convert DPT 3.1 checkpoints from the MiDaS repository. URL: https://github.com/isl-org/MiDaS"""
 
 import argparse
-from io import BytesIO
 from pathlib import Path
 
-import httpx
+import requests
 import torch
 from PIL import Image
 
@@ -166,9 +166,8 @@ def rename_key(dct, old, new):
 # We will verify our results on an image of cute cats
 def prepare_img():
     url = "http://images.cocodataset.org/val2017/000000039769.jpg"
-    with httpx.stream("GET", url) as response:
-        image = Image.open(BytesIO(response.read()))
-    return image
+    im = Image.open(requests.get(url, stream=True).raw)
+    return im
 
 
 @torch.no_grad()
@@ -219,12 +218,12 @@ def convert_dpt_checkpoint(model_name, pytorch_dump_folder_path, push_to_hub):
     print("Mean of pixel values:", pixel_values.mean().item())
     print("Shape of pixel values:", pixel_values.shape)
 
+    import requests
     from PIL import Image
     from torchvision import transforms
 
     url = "http://images.cocodataset.org/val2017/000000039769.jpg"
-    with httpx.stream("GET", url) as response:
-        image = Image.open(BytesIO(response.read()))
+    image = Image.open(requests.get(url, stream=True).raw)
 
     transforms = transforms.Compose(
         [

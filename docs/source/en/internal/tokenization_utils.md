@@ -18,7 +18,8 @@ rendered properly in your Markdown viewer.
 
 This page lists all the utility functions used by the tokenizers, mainly the class
 [`~tokenization_utils_base.PreTrainedTokenizerBase`] that implements the common methods between
-[`PreTrainedTokenizer`] and [`PreTrainedTokenizerFast`].
+[`PreTrainedTokenizer`] and [`PreTrainedTokenizerFast`] and the mixin
+[`~tokenization_utils_base.SpecialTokensMixin`].
 
 Most of those are only useful if you are studying the code of the tokenizers in the library.
 
@@ -27,6 +28,10 @@ Most of those are only useful if you are studying the code of the tokenizers in 
 [[autodoc]] tokenization_utils_base.PreTrainedTokenizerBase
     - __call__
     - all
+
+## SpecialTokensMixin
+
+[[autodoc]] tokenization_utils_base.SpecialTokensMixin
 
 ## Enums and namedtuples
 

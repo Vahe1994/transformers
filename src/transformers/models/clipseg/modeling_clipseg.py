@@ -1,3 +1,4 @@
+# coding=utf-8
 # Copyright 2022 The OpenAI Team Authors and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,21 +16,19 @@
 
 import copy
 import math
-from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable, Optional, Union
 
 import torch
+import torch.utils.checkpoint
 from torch import nn
 
-from ... import initialization as init
 from ...activations import ACT2FN
-from ...masking_utils import create_causal_mask
+from ...modeling_attn_mask_utils import _create_4d_causal_attention_mask, _prepare_4d_attention_mask
 from ...modeling_layers import GradientCheckpointingLayer
 from ...modeling_outputs import BaseModelOutput, BaseModelOutputWithPooling
 from ...modeling_utils import ALL_ATTENTION_FUNCTIONS, PreTrainedModel
-from ...processing_utils import Unpack
-from ...utils import ModelOutput, TransformersKwargs, auto_docstring, can_return_tuple, logging, torch_int
+from ...utils import ModelOutput, auto_docstring, can_return_tuple, logging, torch_int
 from .configuration_clipseg import CLIPSegConfig, CLIPSegTextConfig, CLIPSegVisionConfig
 
 
@@ -72,11 +71,11 @@ class CLIPSegOutput(ModelOutput):
         The output of the [`CLIPSegVisionModel`].
     """
 
-    loss: torch.FloatTensor | None = None
-    logits_per_image: torch.FloatTensor | None = None
-    logits_per_text: torch.FloatTensor | None = None
-    text_embeds: torch.FloatTensor | None = None
-    image_embeds: torch.FloatTensor | None = None
+    loss: Optional[torch.FloatTensor] = None
+    logits_per_image: Optional[torch.FloatTensor] = None
+    logits_per_text: Optional[torch.FloatTensor] = None
+    text_embeds: Optional[torch.FloatTensor] = None
+    image_embeds: Optional[torch.FloatTensor] = None
     text_model_output: BaseModelOutputWithPooling = None
     vision_model_output: BaseModelOutputWithPooling = None
 
@@ -95,9 +94,9 @@ class CLIPSegDecoderOutput(ModelOutput):
         Classification scores for each pixel.
     """
 
-    logits: torch.FloatTensor | None = None
-    hidden_states: tuple[torch.FloatTensor] | None = None
-    attentions: tuple[torch.FloatTensor] | None = None
+    logits: Optional[torch.FloatTensor] = None
+    hidden_states: Optional[tuple[torch.FloatTensor]] = None
+    attentions: Optional[tuple[torch.FloatTensor]] = None
 
 
 @dataclass
@@ -118,10 +117,10 @@ class CLIPSegImageSegmentationOutput(ModelOutput):
         The output of the [`CLIPSegDecoder`].
     """
 
-    loss: torch.FloatTensor | None = None
-    logits: torch.FloatTensor | None = None
-    conditional_embeddings: torch.FloatTensor | None = None
-    pooled_output: torch.FloatTensor | None = None
+    loss: Optional[torch.FloatTensor] = None
+    logits: Optional[torch.FloatTensor] = None
+    conditional_embeddings: Optional[torch.FloatTensor] = None
+    pooled_output: Optional[torch.FloatTensor] = None
     vision_model_output: BaseModelOutputWithPooling = None
     decoder_output: CLIPSegDecoderOutput = None
 
@@ -231,9 +230,9 @@ class CLIPSegTextEmbeddings(nn.Module):
 
     def forward(
         self,
-        input_ids: torch.LongTensor | None = None,
-        position_ids: torch.LongTensor | None = None,
-        inputs_embeds: torch.FloatTensor | None = None,
+        input_ids: Optional[torch.LongTensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        inputs_embeds: Optional[torch.FloatTensor] = None,
     ) -> torch.Tensor:
         seq_length = input_ids.shape[-1] if input_ids is not None else inputs_embeds.shape[-2]
         max_position_embedding = self.position_embedding.weight.shape[0]
@@ -262,7 +261,7 @@ def eager_attention_forward(
     query: torch.Tensor,
     key: torch.Tensor,
     value: torch.Tensor,
-    attention_mask: torch.Tensor | None,
+    attention_mask: Optional[torch.Tensor],
     scaling: float,
     dropout: float = 0.0,
     **kwargs,
@@ -283,7 +282,7 @@ def eager_attention_forward(
 class CLIPSegAttention(nn.Module):
     """Multi-headed attention from 'Attention Is All You Need' paper"""
 
-    def __init__(self, config: CLIPSegVisionConfig | CLIPSegTextConfig):
+    def __init__(self, config: Union[CLIPSegVisionConfig, CLIPSegTextConfig]):
         super().__init__()
         self.config = config
         self.embed_dim = config.hidden_size
@@ -306,10 +305,10 @@ class CLIPSegAttention(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        attention_mask: torch.Tensor | None = None,
-        output_attentions: bool | None = False,
-        **kwargs,
-    ) -> tuple[torch.Tensor, torch.Tensor | None]:
+        attention_mask: Optional[torch.Tensor] = None,
+        causal_attention_mask: Optional[torch.Tensor] = None,
+        output_attentions: Optional[bool] = False,
+    ) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
         """Input shape: Batch x Time x Channel"""
 
         batch_size, seq_length, embed_dim = hidden_states.shape
@@ -321,10 +320,25 @@ class CLIPSegAttention(nn.Module):
         queries = queries.view(batch_size, seq_length, self.num_heads, self.head_dim).transpose(1, 2)
         keys = keys.view(batch_size, seq_length, self.num_heads, self.head_dim).transpose(1, 2)
         values = values.view(batch_size, seq_length, self.num_heads, self.head_dim).transpose(1, 2)
+        # CLIP text model uses both `causal_attention_mask` and `attention_mask`
+        # in case FA2 kernel is called, `is_causal` should be inferred from `causal_attention_mask`
+        if self.config._attn_implementation != "flash_attention_2":
+            if attention_mask is not None and causal_attention_mask is not None:
+                attention_mask = attention_mask + causal_attention_mask
+            elif causal_attention_mask is not None:
+                attention_mask = causal_attention_mask
+        else:
+            self.is_causal = causal_attention_mask is not None
 
-        attention_interface: Callable = ALL_ATTENTION_FUNCTIONS.get_interface(
-            self.config._attn_implementation, eager_attention_forward
-        )
+        attention_interface: Callable = eager_attention_forward
+        if self.config._attn_implementation != "eager":
+            if self.config._attn_implementation == "sdpa" and output_attentions:
+                logger.warning_once(
+                    "`torch.nn.functional.scaled_dot_product_attention` does not support `output_attentions=True`. Falling back to "
+                    'eager attention. This warning can be removed using the argument `attn_implementation="eager"` when loading the model.'
+                )
+            else:
+                attention_interface = ALL_ATTENTION_FUNCTIONS[self.config._attn_implementation]
 
         attn_output, attn_weights = attention_interface(
             self,
@@ -332,9 +346,9 @@ class CLIPSegAttention(nn.Module):
             keys,
             values,
             attention_mask,
+            is_causal=self.is_causal,
             scaling=self.scale,
             dropout=0.0 if not self.training else self.dropout,
-            **kwargs,
         )
 
         attn_output = attn_output.reshape(batch_size, seq_length, embed_dim).contiguous()
@@ -375,8 +389,8 @@ class CLIPSegEncoderLayer(GradientCheckpointingLayer):
         self,
         hidden_states: torch.Tensor,
         attention_mask: torch.Tensor,
-        output_attentions: bool | None = False,
-        **kwargs: Unpack[TransformersKwargs],
+        causal_attention_mask: torch.Tensor,
+        output_attentions: Optional[bool] = False,
     ) -> tuple[torch.FloatTensor]:
         """
         Args:
@@ -394,8 +408,8 @@ class CLIPSegEncoderLayer(GradientCheckpointingLayer):
         hidden_states, attn_weights = self.self_attn(
             hidden_states=hidden_states,
             attention_mask=attention_mask,
+            causal_attention_mask=causal_attention_mask,
             output_attentions=output_attentions,
-            **kwargs,
         )
         hidden_states = residual + hidden_states
 
@@ -416,52 +430,48 @@ class CLIPSegEncoderLayer(GradientCheckpointingLayer):
 class CLIPSegPreTrainedModel(PreTrainedModel):
     config: CLIPSegConfig
     base_model_prefix = "clip"
-    input_modalities = ("image", "text")
     supports_gradient_checkpointing = True
 
-    @torch.no_grad()
     def _init_weights(self, module):
         """Initialize the weights"""
         factor = self.config.initializer_factor
         if isinstance(module, CLIPSegTextEmbeddings):
-            init.normal_(module.token_embedding.weight, mean=0.0, std=factor * 0.02)
-            init.normal_(module.position_embedding.weight, mean=0.0, std=factor * 0.02)
-            init.copy_(module.position_ids, torch.arange(module.position_ids.shape[-1]).expand((1, -1)))
+            module.token_embedding.weight.data.normal_(mean=0.0, std=factor * 0.02)
+            module.position_embedding.weight.data.normal_(mean=0.0, std=factor * 0.02)
         elif isinstance(module, CLIPSegVisionEmbeddings):
             factor = self.config.initializer_factor
-            init.normal_(module.class_embedding, mean=0.0, std=module.embed_dim**-0.5 * factor)
-            init.normal_(module.patch_embedding.weight, std=module.config.initializer_range * factor)
-            init.normal_(module.position_embedding.weight, std=module.config.initializer_range * factor)
-            init.copy_(module.position_ids, torch.arange(module.num_positions).expand((1, -1)))
+            nn.init.normal_(module.class_embedding, mean=0.0, std=module.embed_dim**-0.5 * factor)
+            nn.init.normal_(module.patch_embedding.weight, std=module.config.initializer_range * factor)
+            nn.init.normal_(module.position_embedding.weight, std=module.config.initializer_range * factor)
         elif isinstance(module, CLIPSegAttention):
             factor = self.config.initializer_factor
             in_proj_std = (module.embed_dim**-0.5) * ((2 * module.config.num_hidden_layers) ** -0.5) * factor
             out_proj_std = (module.embed_dim**-0.5) * factor
-            init.normal_(module.q_proj.weight, std=in_proj_std)
-            init.normal_(module.k_proj.weight, std=in_proj_std)
-            init.normal_(module.v_proj.weight, std=in_proj_std)
-            init.normal_(module.out_proj.weight, std=out_proj_std)
+            nn.init.normal_(module.q_proj.weight, std=in_proj_std)
+            nn.init.normal_(module.k_proj.weight, std=in_proj_std)
+            nn.init.normal_(module.v_proj.weight, std=in_proj_std)
+            nn.init.normal_(module.out_proj.weight, std=out_proj_std)
         elif isinstance(module, CLIPSegMLP):
             factor = self.config.initializer_factor
             in_proj_std = (module.config.hidden_size**-0.5) * ((2 * module.config.num_hidden_layers) ** -0.5) * factor
             fc_std = (2 * module.config.hidden_size) ** -0.5 * factor
-            init.normal_(module.fc1.weight, std=fc_std)
-            init.normal_(module.fc2.weight, std=in_proj_std)
+            nn.init.normal_(module.fc1.weight, std=fc_std)
+            nn.init.normal_(module.fc2.weight, std=in_proj_std)
         elif isinstance(module, CLIPSegModel):
-            init.normal_(
+            nn.init.normal_(
                 module.text_projection.weight,
                 std=module.text_embed_dim**-0.5 * self.config.initializer_factor,
             )
-            init.normal_(
+            nn.init.normal_(
                 module.visual_projection.weight,
                 std=module.vision_embed_dim**-0.5 * self.config.initializer_factor,
             )
 
         if isinstance(module, nn.LayerNorm):
-            init.zeros_(module.bias)
-            init.ones_(module.weight)
+            module.bias.data.zero_()
+            module.weight.data.fill_(1.0)
         if isinstance(module, nn.Linear) and module.bias is not None:
-            init.zeros_(module.bias)
+            module.bias.data.zero_()
 
 
 # Copied from transformers.models.altclip.modeling_altclip.AltCLIPEncoder with AltCLIP->CLIPSeg
@@ -484,12 +494,12 @@ class CLIPSegEncoder(nn.Module):
     def forward(
         self,
         inputs_embeds,
-        attention_mask: torch.Tensor | None = None,
-        output_attentions: bool | None = None,
-        output_hidden_states: bool | None = None,
-        return_dict: bool | None = None,
-        **kwargs: Unpack[TransformersKwargs],
-    ) -> tuple | BaseModelOutput:
+        attention_mask: Optional[torch.Tensor] = None,
+        causal_attention_mask: Optional[torch.Tensor] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+    ) -> Union[tuple, BaseModelOutput]:
         r"""
         Args:
             inputs_embeds (`torch.FloatTensor` of shape `(batch_size, sequence_length, hidden_size)`):
@@ -498,6 +508,13 @@ class CLIPSegEncoder(nn.Module):
                 than the model's internal embedding lookup matrix.
             attention_mask (`torch.Tensor` of shape `(batch_size, sequence_length)`, *optional*):
                 Mask to avoid performing attention on padding token indices. Mask values selected in `[0, 1]`:
+
+                - 1 for tokens that are **not masked**,
+                - 0 for tokens that are **masked**.
+
+                [What are attention masks?](../glossary#attention-mask)
+            causal_attention_mask (`torch.Tensor` of shape `(batch_size, sequence_length)`, *optional*):
+                Causal mask for the text model. Mask values selected in `[0, 1]`:
 
                 - 1 for tokens that are **not masked**,
                 - 0 for tokens that are **masked**.
@@ -528,10 +545,9 @@ class CLIPSegEncoder(nn.Module):
             layer_outputs = encoder_layer(
                 hidden_states,
                 attention_mask,
+                causal_attention_mask,
                 output_attentions=output_attentions,
-                **kwargs,
             )
-
             hidden_states = layer_outputs[0]
 
             if output_attentions:
@@ -545,10 +561,10 @@ class CLIPSegEncoder(nn.Module):
         )
 
 
-class CLIPSegTextTransformer(CLIPSegPreTrainedModel):
+class CLIPSegTextTransformer(nn.Module):
     def __init__(self, config: CLIPSegTextConfig):
-        super().__init__(config)
-
+        super().__init__()
+        self.config = config
         embed_dim = config.hidden_size
         self.embeddings = CLIPSegTextEmbeddings(config)
         self.encoder = CLIPSegEncoder(config)
@@ -557,19 +573,16 @@ class CLIPSegTextTransformer(CLIPSegPreTrainedModel):
         # For `pooled_output` computation
         self.eos_token_id = config.eos_token_id
 
-        self.post_init()
-
     @auto_docstring
     def forward(
         self,
-        input_ids: torch.Tensor | None = None,
-        attention_mask: torch.Tensor | None = None,
-        position_ids: torch.Tensor | None = None,
-        output_attentions: bool | None = None,
-        output_hidden_states: bool | None = None,
-        return_dict: bool | None = None,
-        **kwargs,
-    ) -> tuple | BaseModelOutputWithPooling:
+        input_ids: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.Tensor] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+    ) -> Union[tuple, BaseModelOutputWithPooling]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
@@ -584,23 +597,23 @@ class CLIPSegTextTransformer(CLIPSegPreTrainedModel):
 
         hidden_states = self.embeddings(input_ids=input_ids, position_ids=position_ids)
 
-        attention_mask = create_causal_mask(
-            config=self.config,
-            inputs_embeds=hidden_states,
-            attention_mask=attention_mask,
-            cache_position=torch.arange(hidden_states.shape[1], device=hidden_states.device),
-            past_key_values=None,
+        # CLIPSeg's text model uses causal mask, prepare it here.
+        # https://github.com/openai/CLIPSeg/blob/cfcffb90e69f37bf2ff1e988237a0fbe41f33c04/clipseg/model.py#L324
+        causal_attention_mask = _create_4d_causal_attention_mask(
+            input_shape, hidden_states.dtype, device=hidden_states.device
         )
+        # expand attention_mask
+        if attention_mask is not None:
+            # [bsz, seq_len] -> [bsz, 1, tgt_seq_len, src_seq_len]
+            attention_mask = _prepare_4d_attention_mask(attention_mask, hidden_states.dtype)
 
-        kwargs.pop("is_causal", None)
         encoder_outputs = self.encoder(
             inputs_embeds=hidden_states,
             attention_mask=attention_mask,
+            causal_attention_mask=causal_attention_mask,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
-            is_causal=True,
-            **kwargs,
         )
 
         last_hidden_state = encoder_outputs[0]
@@ -618,7 +631,7 @@ class CLIPSegTextTransformer(CLIPSegPreTrainedModel):
                 input_ids.to(dtype=torch.int, device=last_hidden_state.device).argmax(dim=-1),
             ]
         else:
-            # The config gets updated `eos_token_id` from PR #24773 (so the use of extra new tokens is possible)
+            # The config gets updated `eos_token_id` from PR #24773 (so the use of exta new tokens is possible)
             pooled_output = last_hidden_state[
                 torch.arange(last_hidden_state.shape[0], device=last_hidden_state.device),
                 # We need to get the first position of `eos_token_id` value (`pad_token_ids` might equal to `eos_token_id`)
@@ -641,7 +654,6 @@ class CLIPSegTextTransformer(CLIPSegPreTrainedModel):
 
 class CLIPSegTextModel(CLIPSegPreTrainedModel):
     config: CLIPSegTextConfig
-    input_modalities = ("text",)
 
     _no_split_modules = ["CLIPSegTextEmbeddings", "CLIPSegEncoderLayer"]
 
@@ -660,14 +672,13 @@ class CLIPSegTextModel(CLIPSegPreTrainedModel):
     @auto_docstring
     def forward(
         self,
-        input_ids: torch.Tensor | None = None,
-        attention_mask: torch.Tensor | None = None,
-        position_ids: torch.Tensor | None = None,
-        output_attentions: bool | None = None,
-        output_hidden_states: bool | None = None,
-        return_dict: bool | None = None,
-        **kwargs,
-    ) -> tuple | BaseModelOutputWithPooling:
+        input_ids: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.Tensor] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+    ) -> Union[tuple, BaseModelOutputWithPooling]:
         r"""
         Examples:
 
@@ -708,12 +719,12 @@ class CLIPSegVisionTransformer(nn.Module):
     @auto_docstring
     def forward(
         self,
-        pixel_values: torch.FloatTensor | None,
-        output_attentions: bool | None = None,
-        output_hidden_states: bool | None = None,
-        return_dict: bool | None = None,
-        interpolate_pos_encoding: bool | None = True,
-    ) -> tuple | BaseModelOutputWithPooling:
+        pixel_values: Optional[torch.FloatTensor],
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+        interpolate_pos_encoding: Optional[bool] = True,
+    ) -> Union[tuple, BaseModelOutputWithPooling]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
@@ -748,7 +759,6 @@ class CLIPSegVisionTransformer(nn.Module):
 class CLIPSegVisionModel(CLIPSegPreTrainedModel):
     config: CLIPSegVisionConfig
     main_input_name = "pixel_values"
-    input_modalities = ("image",)
 
     def __init__(self, config: CLIPSegVisionConfig):
         super().__init__(config)
@@ -762,28 +772,25 @@ class CLIPSegVisionModel(CLIPSegPreTrainedModel):
     @auto_docstring
     def forward(
         self,
-        pixel_values: torch.FloatTensor | None = None,
-        output_attentions: bool | None = None,
-        output_hidden_states: bool | None = None,
-        interpolate_pos_encoding: bool | None = True,
-        return_dict: bool | None = None,
-        **kwargs,
-    ) -> tuple | BaseModelOutputWithPooling:
+        pixel_values: Optional[torch.FloatTensor] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        interpolate_pos_encoding: Optional[bool] = True,
+        return_dict: Optional[bool] = None,
+    ) -> Union[tuple, BaseModelOutputWithPooling]:
         r"""
         Examples:
 
         ```python
         >>> from PIL import Image
-        >>> import httpx
-        >>> from io import BytesIO
+        >>> import requests
         >>> from transformers import AutoProcessor, CLIPSegVisionModel
 
         >>> processor = AutoProcessor.from_pretrained("CIDAS/clipseg-rd64-refined")
         >>> model = CLIPSegVisionModel.from_pretrained("CIDAS/clipseg-rd64-refined")
 
         >>> url = "http://images.cocodataset.org/val2017/000000039769.jpg"
-        >>> with httpx.stream("GET", url) as response:
-        ...     image = Image.open(BytesIO(response.read()))
+        >>> image = Image.open(requests.get(url, stream=True).raw)
 
         >>> inputs = processor(images=image, return_tensors="pt")
 
@@ -840,93 +847,117 @@ class CLIPSegModel(CLIPSegPreTrainedModel):
         # Initialize weights and apply final processing
         self.post_init()
 
-    @can_return_tuple
     @auto_docstring
     def get_text_features(
         self,
-        input_ids: torch.Tensor,
-        attention_mask: torch.Tensor | None = None,
-        position_ids: torch.Tensor | None = None,
-        **kwargs: Unpack[TransformersKwargs],
-    ) -> tuple | BaseModelOutputWithPooling:
+        input_ids: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.Tensor] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+    ) -> torch.FloatTensor:
         r"""
+        Returns:
+            text_features (`torch.FloatTensor` of shape `(batch_size, output_dim`): The text embeddings obtained by
+            applying the projection layer to the pooled output of [`CLIPSegTextModel`].
+
         Examples:
 
         ```python
-        >>> import torch
         >>> from transformers import AutoTokenizer, CLIPSegModel
 
         >>> tokenizer = AutoTokenizer.from_pretrained("CIDAS/clipseg-rd64-refined")
         >>> model = CLIPSegModel.from_pretrained("CIDAS/clipseg-rd64-refined")
 
         >>> inputs = tokenizer(["a photo of a cat", "a photo of a dog"], padding=True, return_tensors="pt")
-        >>> with torch.inference_mode():
-        ...     text_features = model.get_text_features(**inputs)
+        >>> text_features = model.get_text_features(**inputs)
         ```"""
-        text_outputs: BaseModelOutputWithPooling = self.text_model(
+        # Use CLIPSEG model's config for some fields (if specified) instead of those of vision & text components.
+        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
+        output_hidden_states = (
+            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+        )
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+        text_outputs = self.text_model(
             input_ids=input_ids,
             attention_mask=attention_mask,
             position_ids=position_ids,
-            return_dict=True,
-            **kwargs,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
         )
-        pooled_output = text_outputs.pooler_output
-        text_outputs.pooler_output = self.text_projection(pooled_output)
 
-        return text_outputs
+        pooled_output = text_outputs[1]
+        text_features = self.text_projection(pooled_output)
 
-    @can_return_tuple
+        return text_features
+
     @auto_docstring
     def get_image_features(
         self,
-        pixel_values: torch.FloatTensor,
+        pixel_values: Optional[torch.FloatTensor] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
         interpolate_pos_encoding: bool = True,
-        **kwargs: Unpack[TransformersKwargs],
-    ) -> tuple | BaseModelOutputWithPooling:
+        return_dict: Optional[bool] = None,
+    ) -> torch.FloatTensor:
         r"""
+        Returns:
+            image_features (`torch.FloatTensor` of shape `(batch_size, output_dim`): The image embeddings obtained by
+            applying the projection layer to the pooled output of [`CLIPSegVisionModel`].
+
         Examples:
 
         ```python
-        >>> import torch
+        >>> from PIL import Image
+        >>> import requests
         >>> from transformers import AutoProcessor, CLIPSegModel
-        >>> from transformers.image_utils import load_image
 
         >>> processor = AutoProcessor.from_pretrained("CIDAS/clipseg-rd64-refined")
         >>> model = CLIPSegModel.from_pretrained("CIDAS/clipseg-rd64-refined")
 
         >>> url = "http://images.cocodataset.org/val2017/000000039769.jpg"
-        >>> image = load_image(url)
+        >>> image = Image.open(requests.get(url, stream=True).raw)
 
         >>> inputs = processor(images=image, return_tensors="pt")
 
-        >>> with torch.inference_mode():
-        ...     image_features = model.get_image_features(**inputs)
+        >>> image_features = model.get_image_features(**inputs)
         ```"""
-        vision_outputs: BaseModelOutputWithPooling = self.vision_model(
-            pixel_values=pixel_values,
-            interpolate_pos_encoding=interpolate_pos_encoding,
-            return_dict=True,
-            **kwargs,
+        # Use CLIPSEG model's config for some fields (if specified) instead of those of vision & text components.
+        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
+        output_hidden_states = (
+            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
-        pooled_output = vision_outputs.pooler_output
-        vision_outputs.pooler_output = self.visual_projection(pooled_output)
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        return vision_outputs
+        vision_outputs = self.vision_model(
+            pixel_values=pixel_values,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            interpolate_pos_encoding=interpolate_pos_encoding,
+            return_dict=return_dict,
+        )
+
+        pooled_output = vision_outputs[1]  # pooled_output
+        image_features = self.visual_projection(pooled_output)
+
+        return image_features
 
     @auto_docstring
     def forward(
         self,
-        input_ids: torch.LongTensor | None = None,
-        pixel_values: torch.FloatTensor | None = None,
-        attention_mask: torch.Tensor | None = None,
-        position_ids: torch.LongTensor | None = None,
-        return_loss: bool | None = None,
-        output_attentions: bool | None = None,
-        output_hidden_states: bool | None = None,
+        input_ids: Optional[torch.LongTensor] = None,
+        pixel_values: Optional[torch.FloatTensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        return_loss: Optional[bool] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
         interpolate_pos_encoding: bool = True,
-        return_dict: bool | None = None,
-        **kwargs,
-    ) -> tuple | CLIPSegOutput:
+        return_dict: Optional[bool] = None,
+    ) -> Union[tuple, CLIPSegOutput]:
         r"""
         return_loss (`bool`, *optional*):
             Whether or not to return the contrastive loss.
@@ -934,22 +965,21 @@ class CLIPSegModel(CLIPSegPreTrainedModel):
         Examples:
 
         ```python
-        >>> import torch
+        >>> from PIL import Image
+        >>> import requests
         >>> from transformers import AutoProcessor, CLIPSegModel
-        >>> from transformers.image_utils import load_image
 
         >>> processor = AutoProcessor.from_pretrained("CIDAS/clipseg-rd64-refined")
         >>> model = CLIPSegModel.from_pretrained("CIDAS/clipseg-rd64-refined")
 
         >>> url = "http://images.cocodataset.org/val2017/000000039769.jpg"
-        >>> image = load_image(url)
+        >>> image = Image.open(requests.get(url, stream=True).raw)
 
         >>> inputs = processor(
         ...     text=["a photo of a cat", "a photo of a dog"], images=image, return_tensors="pt", padding=True
         ... )
 
-        >>> with torch.inference_mode():
-        ...     outputs = model(**inputs)
+        >>> outputs = model(**inputs)
         >>> logits_per_image = outputs.logits_per_image  # this is the image-text similarity score
         >>> probs = logits_per_image.softmax(dim=1)  # we can take the softmax to get the label probabilities
         ```"""
@@ -1031,7 +1061,7 @@ class CLIPSegDecoderLayer(nn.Module):
         hidden_states: torch.Tensor,
         attention_mask: torch.Tensor,
         causal_attention_mask: torch.Tensor,
-        output_attentions: bool | None = False,
+        output_attentions: Optional[bool] = False,
     ) -> tuple[torch.FloatTensor]:
         """
         Args:
@@ -1111,16 +1141,13 @@ class CLIPSegDecoder(CLIPSegPreTrainedModel):
         decoder_config.hidden_act = "relu"
         self.layers = nn.ModuleList([CLIPSegDecoderLayer(decoder_config) for _ in range(len(config.extract_layers))])
 
-        self.post_init()
-
     def forward(
         self,
         hidden_states: tuple[torch.Tensor],
         conditional_embeddings: torch.Tensor,
-        output_attentions: bool | None = None,
-        output_hidden_states: bool | None = None,
-        return_dict: bool | None = True,
-        **kwargs,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = True,
     ):
         all_hidden_states = () if output_hidden_states else None
         all_attentions = () if output_attentions else None
@@ -1194,11 +1221,11 @@ class CLIPSegForImageSegmentation(CLIPSegPreTrainedModel):
 
     def get_conditional_embeddings(
         self,
-        batch_size: int | None = None,
-        input_ids: torch.Tensor | None = None,
-        attention_mask: torch.Tensor | None = None,
-        position_ids: torch.Tensor | None = None,
-        conditional_pixel_values: torch.Tensor | None = None,
+        batch_size: Optional[int] = None,
+        input_ids: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.Tensor] = None,
+        conditional_pixel_values: Optional[torch.Tensor] = None,
     ):
         if input_ids is not None:
             # compute conditional embeddings from texts
@@ -1207,13 +1234,13 @@ class CLIPSegForImageSegmentation(CLIPSegPreTrainedModel):
             with torch.no_grad():
                 conditional_embeddings = self.clip.get_text_features(
                     input_ids, attention_mask=attention_mask, position_ids=position_ids
-                ).pooler_output
+                )
         elif conditional_pixel_values is not None:
             # compute conditional embeddings from images
             if len(conditional_pixel_values) != batch_size:
                 raise ValueError("Make sure to pass as many prompt images as there are query images")
             with torch.no_grad():
-                conditional_embeddings = self.clip.get_image_features(conditional_pixel_values).pooler_output
+                conditional_embeddings = self.clip.get_image_features(conditional_pixel_values)
         else:
             raise ValueError(
                 "Invalid conditional, should be either provided as `input_ids` or `conditional_pixel_values`"
@@ -1224,19 +1251,18 @@ class CLIPSegForImageSegmentation(CLIPSegPreTrainedModel):
     @auto_docstring
     def forward(
         self,
-        input_ids: torch.FloatTensor | None = None,
-        pixel_values: torch.FloatTensor | None = None,
-        conditional_pixel_values: torch.FloatTensor | None = None,
-        conditional_embeddings: torch.FloatTensor | None = None,
-        attention_mask: torch.Tensor | None = None,
-        position_ids: torch.LongTensor | None = None,
-        labels: torch.LongTensor | None = None,
-        output_attentions: bool | None = None,
-        output_hidden_states: bool | None = None,
+        input_ids: Optional[torch.FloatTensor] = None,
+        pixel_values: Optional[torch.FloatTensor] = None,
+        conditional_pixel_values: Optional[torch.FloatTensor] = None,
+        conditional_embeddings: Optional[torch.FloatTensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        labels: Optional[torch.LongTensor] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
         interpolate_pos_encoding: bool = True,
-        return_dict: bool | None = None,
-        **kwargs,
-    ) -> tuple | CLIPSegOutput:
+        return_dict: Optional[bool] = None,
+    ) -> Union[tuple, CLIPSegOutput]:
         r"""
         conditional_pixel_values (`torch.FloatTensor`, *optional*):
             The pixel values of the conditional images.
@@ -1251,21 +1277,19 @@ class CLIPSegForImageSegmentation(CLIPSegPreTrainedModel):
         Examples:
 
         ```python
-        >>> import torch
         >>> from transformers import AutoProcessor, CLIPSegForImageSegmentation
-        >>> from transformers.image_utils import load_image
+        >>> from PIL import Image
+        >>> import requests
 
         >>> processor = AutoProcessor.from_pretrained("CIDAS/clipseg-rd64-refined")
         >>> model = CLIPSegForImageSegmentation.from_pretrained("CIDAS/clipseg-rd64-refined")
 
         >>> url = "http://images.cocodataset.org/val2017/000000039769.jpg"
-        >>> image = load_image(url)
-
+        >>> image = Image.open(requests.get(url, stream=True).raw)
         >>> texts = ["a cat", "a remote", "a blanket"]
         >>> inputs = processor(text=texts, images=[image] * len(texts), padding=True, return_tensors="pt")
 
-        >>> with torch.inference_mode():
-        ...     outputs = model(**inputs)
+        >>> outputs = model(**inputs)
 
         >>> logits = outputs.logits
         >>> print(logits.shape)

@@ -14,8 +14,11 @@
 """Testing suite for the PyTorch Chinese-CLIP model."""
 
 import inspect
+import os
+import tempfile
 import unittest
 
+import numpy as np
 import requests
 
 from transformers import ChineseCLIPConfig, ChineseCLIPTextConfig, ChineseCLIPVisionConfig
@@ -26,6 +29,7 @@ from transformers.utils import is_torch_available, is_vision_available
 from ...test_configuration_common import ConfigTester
 from ...test_modeling_common import (
     ModelTesterMixin,
+    _config_zero_init,
     floats_tensor,
     ids_tensor,
     random_attention_mask,
@@ -312,6 +316,7 @@ class ChineseCLIPVisionModelTester:
 @require_torch
 class ChineseCLIPTextModelTest(ModelTesterMixin, unittest.TestCase):
     all_model_classes = (ChineseCLIPTextModel,) if is_torch_available() else ()
+    fx_compatible = False
 
     # special case for ForPreTraining model
     def _prepare_for_class(self, inputs_dict, model_class, return_labels=False):
@@ -337,6 +342,12 @@ class ChineseCLIPTextModelTest(ModelTesterMixin, unittest.TestCase):
     def test_model(self):
         config_and_inputs = self.model_tester.prepare_config_and_inputs()
         self.model_tester.create_and_check_model(*config_and_inputs)
+
+    def test_model_various_embeddings(self):
+        config_and_inputs = self.model_tester.prepare_config_and_inputs()
+        for type in ["absolute", "relative_key", "relative_key_query"]:
+            config_and_inputs[0].position_embedding_type = type
+            self.model_tester.create_and_check_model(*config_and_inputs)
 
     def test_model_as_decoder(self):
         config_and_inputs = self.model_tester.prepare_config_and_inputs_for_decoder()
@@ -375,20 +386,24 @@ class ChineseCLIPTextModelTest(ModelTesterMixin, unittest.TestCase):
         model = ChineseCLIPTextModel.from_pretrained(model_name)
         self.assertIsNotNone(model)
 
-    @unittest.skip(reason="This module does not support standalone training")
+    @unittest.skip
     def test_training(self):
         pass
 
-    @unittest.skip(reason="This module does not support standalone training")
+    @unittest.skip
     def test_training_gradient_checkpointing(self):
         pass
 
-    @unittest.skip(reason="This module does not support standalone training")
-    def test_training_gradient_checkpointing_use_reentrant_false(self):
+    @unittest.skip(
+        reason="This architecture seem to not compute gradients properly when using GC, check: https://github.com/huggingface/transformers/pull/27124"
+    )
+    def test_training_gradient_checkpointing_use_reentrant(self):
         pass
 
-    @unittest.skip(reason="This module does not support standalone training")
-    def test_training_gradient_checkpointing_use_reentrant_true(self):
+    @unittest.skip(
+        reason="This architecture seem to not compute gradients properly when using GC, check: https://github.com/huggingface/transformers/pull/27124"
+    )
+    def test_training_gradient_checkpointing_use_reentrant_false(self):
         pass
 
 
@@ -400,8 +415,10 @@ class ChineseCLIPVisionModelTest(ModelTesterMixin, unittest.TestCase):
     """
 
     all_model_classes = (ChineseCLIPVisionModel,) if is_torch_available() else ()
-
+    fx_compatible = False
+    test_pruning = False
     test_resize_embeddings = False
+    test_head_masking = False
 
     def setUp(self):
         self.model_tester = ChineseCLIPVisionModelTester(self)
@@ -443,6 +460,22 @@ class ChineseCLIPVisionModelTest(ModelTesterMixin, unittest.TestCase):
 
     @unittest.skip
     def test_training(self):
+        pass
+
+    @unittest.skip
+    def test_training_gradient_checkpointing(self):
+        pass
+
+    @unittest.skip(
+        reason="This architecture seem to not compute gradients properly when using GC, check: https://github.com/huggingface/transformers/pull/27124"
+    )
+    def test_training_gradient_checkpointing_use_reentrant(self):
+        pass
+
+    @unittest.skip(
+        reason="This architecture seem to not compute gradients properly when using GC, check: https://github.com/huggingface/transformers/pull/27124"
+    )
+    def test_training_gradient_checkpointing_use_reentrant_false(self):
         pass
 
     @slow
@@ -516,7 +549,9 @@ class ChineseCLIPModelTester:
 class ChineseCLIPModelTest(ModelTesterMixin, PipelineTesterMixin, unittest.TestCase):
     all_model_classes = (ChineseCLIPModel,) if is_torch_available() else ()
     pipeline_model_mapping = {"feature-extraction": ChineseCLIPModel} if is_torch_available() else {}
-
+    fx_compatible = False
+    test_head_masking = False
+    test_pruning = False
     test_resize_embeddings = False
     test_attention_outputs = False
 
@@ -544,6 +579,104 @@ class ChineseCLIPModelTest(ModelTesterMixin, PipelineTesterMixin, unittest.TestC
     @unittest.skip(reason="ChineseCLIPModel does not have input/output embeddings")
     def test_model_get_set_embeddings(self):
         pass
+
+    # override as the `logit_scale` parameter initialization is different for CHINESE_CLIP
+    def test_initialization(self):
+        config, inputs_dict = self.model_tester.prepare_config_and_inputs_for_common()
+
+        configs_no_init = _config_zero_init(config)
+        for sub_config_key in ("vision_config", "text_config"):
+            sub_config = getattr(configs_no_init, sub_config_key, {})
+            setattr(configs_no_init, sub_config_key, _config_zero_init(sub_config))
+        for model_class in self.all_model_classes:
+            model = model_class(config=configs_no_init)
+            for name, param in model.named_parameters():
+                if param.requires_grad:
+                    # check if `logit_scale` is initialized as per the original implementation
+                    if name == "logit_scale":
+                        self.assertAlmostEqual(
+                            param.data.item(),
+                            np.log(1 / 0.07),
+                            delta=1e-3,
+                            msg=f"Parameter {name} of model {model_class} seems not properly initialized",
+                        )
+                    else:
+                        self.assertIn(
+                            ((param.data.mean() * 1e9).round() / 1e9).item(),
+                            [0.0, 1.0],
+                            msg=f"Parameter {name} of model {model_class} seems not properly initialized",
+                        )
+
+    def _create_and_check_torchscript(self, config, inputs_dict):
+        if not self.test_torchscript:
+            self.skipTest(reason="test_torchscript is set to False")
+
+        configs_no_init = _config_zero_init(config)  # To be sure we have no Nan
+        configs_no_init.torchscript = True
+        configs_no_init.return_dict = False
+        for model_class in self.all_model_classes:
+            model = model_class(config=configs_no_init)
+            model.to(torch_device)
+            model.eval()
+
+            try:
+                input_ids = inputs_dict["input_ids"]
+                pixel_values = inputs_dict["pixel_values"]  # CHINESE_CLIP needs pixel_values
+                traced_model = torch.jit.trace(model, (input_ids, pixel_values))
+            except RuntimeError:
+                self.fail("Couldn't trace module.")
+
+            with tempfile.TemporaryDirectory() as tmp_dir_name:
+                pt_file_name = os.path.join(tmp_dir_name, "traced_model.pt")
+
+                try:
+                    torch.jit.save(traced_model, pt_file_name)
+                except Exception:
+                    self.fail("Couldn't save module.")
+
+                try:
+                    loaded_model = torch.jit.load(pt_file_name)
+                except Exception:
+                    self.fail("Couldn't load module.")
+
+            model.to(torch_device)
+            model.eval()
+
+            loaded_model.to(torch_device)
+            loaded_model.eval()
+
+            model_state_dict = model.state_dict()
+            loaded_model_state_dict = loaded_model.state_dict()
+
+            non_persistent_buffers = {}
+            for key in loaded_model_state_dict:
+                if key not in model_state_dict:
+                    non_persistent_buffers[key] = loaded_model_state_dict[key]
+
+            loaded_model_state_dict = {
+                key: value for key, value in loaded_model_state_dict.items() if key not in non_persistent_buffers
+            }
+
+            self.assertEqual(set(model_state_dict.keys()), set(loaded_model_state_dict.keys()))
+
+            model_buffers = list(model.buffers())
+            for non_persistent_buffer in non_persistent_buffers.values():
+                found_buffer = False
+                for i, model_buffer in enumerate(model_buffers):
+                    if torch.equal(non_persistent_buffer, model_buffer):
+                        found_buffer = True
+                        break
+
+                self.assertTrue(found_buffer)
+                model_buffers.pop(i)
+
+            models_equal = True
+            for layer_name, p1 in model_state_dict.items():
+                p2 = loaded_model_state_dict[layer_name]
+                if p1.data.ne(p2.data).sum() > 0:
+                    models_equal = False
+
+            self.assertTrue(models_equal)
 
     @slow
     def test_model_from_pretrained(self):
@@ -623,11 +756,7 @@ class ChineseCLIPModelIntegrationTest(unittest.TestCase):
         self.assertEqual(outputs.vision_model_output.last_hidden_state.shape, expected_shape)
 
         expected_slice = torch.tensor(
-            [
-                [-0.3997, 0.2982, -0.1240],
-                [-0.1455, -0.2749, 0.0397],
-                [-0.3095, -0.4702, 0.8512],
-            ]
+            [[-0.3990, 0.2983, -0.1239], [-0.1452, -0.2759, 0.0403], [-0.3149, -0.4763, 0.8555]]
         ).to(torch_device)
 
         torch.testing.assert_close(

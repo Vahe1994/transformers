@@ -33,8 +33,7 @@ DBRX는 신중하게 선별된 12T 토큰의 데이터로 사전 학습되었으
 
 DBRX Instruct와 DBRX Base에 대한 더 자세한 정보는 이 [기술 블로그 포스트](https://www.databricks.com/blog/introducing-dbrx-new-state-art-open-llm)에서 확인할 수 있습니다.
 
-이 모델은 [eitan-turok](https://huggingface.co/eitanturok)와 [abhi-db](https://huggingface.co/abhi-db)가 기여했습니다.
-참고: 원본 `databricks/dbrx-instruct` 체크포인트가 비공개 처리되어 [`transformers-community/dbrx-instruct`](https://huggingface.co/transformers-community/dbrx-instruct)로 재업로드되었으며, 아래 예시는 해당 재업로드를 사용합니다.
+이 모델은 [eitan-turok](https://huggingface.co/eitanturok)와 [abhi-db](https://huggingface.co/abhi-db)가 기여했습니다. 원본 코드는 [이곳](https://github.com/databricks/dbrx-instruct)에서 찾을 수 있지만, 최신 버전이 아닐 수 있습니다.
 
 ## 사용 예[[usage-examples]]
 
@@ -44,11 +43,11 @@ DBRX Instruct와 DBRX Base에 대한 더 자세한 정보는 이 [기술 블로�
 from transformers import DbrxForCausalLM, AutoTokenizer
 import torch
 
-tokenizer = AutoTokenizer.from_pretrained("transformers-community/dbrx-instruct", token="YOUR_HF_TOKEN")
+tokenizer = AutoTokenizer.from_pretrained("databricks/dbrx-instruct", token="YOUR_HF_TOKEN")
 model = DbrxForCausalLM.from_pretrained(
-    "transformers-community/dbrx-instruct",
+    "databricks/dbrx-instruct",
     device_map="auto",
-    dtype=torch.bfloat16,
+    torch_dtype=torch.bfloat16,
     token="YOUR_HF_TOKEN",
     )
 
@@ -67,11 +66,11 @@ print(tokenizer.decode(outputs[0]))
 from transformers import DbrxForCausalLM, AutoTokenizer
 import torch
 
-tokenizer = AutoTokenizer.from_pretrained("transformers-community/dbrx-instruct", token="YOUR_HF_TOKEN")
+tokenizer = AutoTokenizer.from_pretrained("databricks/dbrx-instruct", token="YOUR_HF_TOKEN")
 model = DbrxForCausalLM.from_pretrained(
-    "transformers-community/dbrx-instruct",
+    "databricks/dbrx-instruct",
     device_map="auto",
-    dtype=torch.bfloat16,
+    torch_dtype=torch.bfloat16,
     token="YOUR_HF_TOKEN",
     attn_implementation="flash_attention_2",
     )
@@ -91,11 +90,11 @@ PyTorch의 스케일된 내적 어텐션을 사용하여도 더 빠른 생성이
 from transformers import DbrxForCausalLM, AutoTokenizer
 import torch
 
-tokenizer = AutoTokenizer.from_pretrained("transformers-community/dbrx-instruct", token="YOUR_HF_TOKEN")
+tokenizer = AutoTokenizer.from_pretrained("databricks/dbrx-instruct", token="YOUR_HF_TOKEN")
 model = DbrxForCausalLM.from_pretrained(
-    "transformers-community/dbrx-instruct",
+    "databricks/dbrx-instruct",
     device_map="auto",
-    dtype=torch.bfloat16,
+    torch_dtype=torch.bfloat16,
     token="YOUR_HF_TOKEN",
     attn_implementation="sdpa",
     )
@@ -123,3 +122,4 @@ print(tokenizer.decode(outputs[0]))
 
 [[autodoc]] DbrxForCausalLM
     - forward
+

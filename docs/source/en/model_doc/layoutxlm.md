@@ -13,7 +13,6 @@ specific language governing permissions and limitations under the License.
 rendered properly in your Markdown viewer.
 
 -->
-*This model was released on 2021-04-18 and added to Hugging Face Transformers on 2021-11-03.*
 
 # LayoutXLM
 
@@ -69,10 +68,6 @@ data for the model.
 
 As LayoutXLM's architecture is equivalent to that of LayoutLMv2, one can refer to [LayoutLMv2's documentation page](layoutlmv2) for all tips, code examples and notebooks.
 </Tip>
-
-## LayoutXLMConfig
-
-[[autodoc]] LayoutXLMConfig
 
 ## LayoutXLMTokenizer
 

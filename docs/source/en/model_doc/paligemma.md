@@ -13,7 +13,6 @@ specific language governing permissions and limitations under the License.
 rendered properly in your Markdown viewer.
 
 -->
-*This model was released on 2024-07-10 and added to Hugging Face Transformers on 2024-05-14.*
 
 <div style="float: right;">
     <div class="flex flex-wrap space-x-1">
@@ -47,7 +46,7 @@ pipeline = pipeline(
     task="image-text-to-text",
     model="google/paligemma2-3b-mix-224",
     device=0,
-    dtype=torch.bfloat16
+    torch_dtype=torch.bfloat16
 )
 pipeline(
     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/pipeline-cat-chonk.jpeg",
@@ -66,7 +65,7 @@ from transformers import AutoProcessor, PaliGemmaForConditionalGeneration
 
 model = PaliGemmaForConditionalGeneration.from_pretrained(
     "google/paligemma2-3b-mix-224",
-    dtype=torch.bfloat16,
+    torch_dtype=torch.bfloat16,
     device_map="auto",
     attn_implementation="sdpa"
 )
@@ -77,7 +76,7 @@ processor = AutoProcessor.from_pretrained(
 prompt = "What is in this image?"
 url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/pipeline-cat-chonk.jpeg"
 image = Image.open(requests.get(url, stream=True).raw)
-inputs = processor(image, prompt, return_tensors="pt").to(model.device)
+inputs = processor(image, prompt, return_tensors="pt").to("cuda")
 
 output = model.generate(**inputs, max_new_tokens=50, cache_implementation="static")
 print(processor.decode(output[0], skip_special_tokens=True))
@@ -100,7 +99,7 @@ from transformers import TorchAoConfig, AutoProcessor, PaliGemmaForConditionalGe
 quantization_config = TorchAoConfig("int4_weight_only", group_size=128)
 model = PaliGemmaForConditionalGeneration.from_pretrained(
     "google/paligemma2-28b-mix-224",
-    dtype=torch.bfloat16,
+    torch_dtype=torch.bfloat16,
     device_map="auto",
     quantization_config=quantization_config
 )
@@ -111,7 +110,7 @@ processor = AutoProcessor.from_pretrained(
 prompt = "What is in this image?"
 url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/pipeline-cat-chonk.jpeg"
 image = Image.open(requests.get(url, stream=True).raw)
-inputs = processor(image, prompt, return_tensors="pt").to(model.device)
+inputs = processor(image, prompt, return_tensors="pt").to("cuda")
 
 output = model.generate(**inputs, max_new_tokens=50, cache_implementation="static")
 print(processor.decode(output[0], skip_special_tokens=True))
@@ -140,7 +139,6 @@ visualizer("<img> What is in this image?")
     answer = "a pallas cat"
     inputs = processor(images=image, text=prompt, suffix=answer, return_tensors="pt")
     ```
-
 - PaliGemma can support multiple input images if it is fine-tuned to accept multiple images. For example, the [NLVR2](https://huggingface.co/google/paligemma-3b-ft-nlvr2-448) checkpoint supports multiple images. Pass the images as a list to the processor.
 
     ```py
@@ -175,7 +173,6 @@ visualizer("<img> What is in this image?")
 ## PaliGemmaProcessor
 
 [[autodoc]] PaliGemmaProcessor
-    - __call__
 
 ## PaliGemmaModel
 
@@ -185,4 +182,3 @@ visualizer("<img> What is in this image?")
 
 [[autodoc]] PaliGemmaForConditionalGeneration
     - forward
-    - get_image_features

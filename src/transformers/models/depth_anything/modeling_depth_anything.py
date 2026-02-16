@@ -1,3 +1,4 @@
+# coding=utf-8
 # Copyright 2024 TikTok and The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,13 +14,16 @@
 # limitations under the License.
 """PyTorch Depth Anything model."""
 
+from typing import Optional, Union
+
 import torch
+import torch.utils.checkpoint
 from torch import nn
 
-from ...backbone_utils import load_backbone
 from ...modeling_outputs import DepthEstimatorOutput
 from ...modeling_utils import PreTrainedModel
 from ...utils import auto_docstring, logging
+from ...utils.backbone_utils import load_backbone
 from .configuration_depth_anything import DepthAnythingConfig
 
 
@@ -176,7 +180,7 @@ class DepthAnythingFeatureFusionLayer(nn.Module):
 
 class DepthAnythingFeatureFusionStage(nn.Module):
     # Copied from transformers.models.dpt.modeling_dpt.DPTFeatureFusionStage.__init__ with DPT->DepthAnything
-    def __init__(self, config: DepthAnythingConfig):
+    def __init__(self, config):
         super().__init__()
         self.layers = nn.ModuleList()
         for _ in range(len(config.neck_hidden_sizes)):
@@ -210,8 +214,19 @@ class DepthAnythingPreTrainedModel(PreTrainedModel):
     config: DepthAnythingConfig
     base_model_prefix = "depth_anything"
     main_input_name = "pixel_values"
-    input_modalities = ("image",)
     supports_gradient_checkpointing = True
+
+    def _init_weights(self, module):
+        """Initialize the weights"""
+        if isinstance(module, (nn.Linear, nn.Conv2d, nn.ConvTranspose2d)):
+            # Slightly different from the TF version which uses truncated_normal for initialization
+            # cf https://github.com/pytorch/pytorch/pull/5617
+            module.weight.data.normal_(mean=0.0, std=self.config.initializer_range)
+            if module.bias is not None:
+                module.bias.data.zero_()
+        elif isinstance(module, nn.LayerNorm):
+            module.bias.data.zero_()
+            module.weight.data.fill_(1.0)
 
 
 class DepthAnythingNeck(nn.Module):
@@ -330,12 +345,11 @@ class DepthAnythingForDepthEstimation(DepthAnythingPreTrainedModel):
     def forward(
         self,
         pixel_values: torch.FloatTensor,
-        labels: torch.LongTensor | None = None,
-        output_attentions: bool | None = None,
-        output_hidden_states: bool | None = None,
-        return_dict: bool | None = None,
-        **kwargs,
-    ) -> tuple[torch.Tensor] | DepthEstimatorOutput:
+        labels: Optional[torch.LongTensor] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+    ) -> Union[tuple[torch.Tensor], DepthEstimatorOutput]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size, height, width)`, *optional*):
             Ground truth depth estimation maps for computing the loss.
@@ -346,12 +360,10 @@ class DepthAnythingForDepthEstimation(DepthAnythingPreTrainedModel):
         >>> import torch
         >>> import numpy as np
         >>> from PIL import Image
-        >>> import httpx
-        >>> from io import BytesIO
+        >>> import requests
 
         >>> url = "http://images.cocodataset.org/val2017/000000039769.jpg"
-        >>> with httpx.stream("GET", url) as response:
-        ...     image = Image.open(BytesIO(response.read()))
+        >>> image = Image.open(requests.get(url, stream=True).raw)
 
         >>> image_processor = AutoImageProcessor.from_pretrained("LiheYoung/depth-anything-small-hf")
         >>> model = AutoModelForDepthEstimation.from_pretrained("LiheYoung/depth-anything-small-hf")

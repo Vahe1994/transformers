@@ -228,6 +228,8 @@ MInDS-14 データセットのサンプリング レートは 8000kHz です (�
 
 ## Train
 
+<frameworkcontent>
+<pt>
 <Tip>
 
 [`Trainer`] を使用したモデルの微調整に慣れていない場合は、[ここ](../training#train-with-pytorch-trainer) の基本的なチュートリアルをご覧ください。
@@ -262,7 +264,7 @@ MInDS-14 データセットのサンプリング レートは 8000kHz です (�
 ...     max_steps=2000,
 ...     gradient_checkpointing=True,
 ...     fp16=True,
-...     train_sampling_strategy="group_by_length",
+...     group_by_length=True,
 ...     eval_strategy="steps",
 ...     per_device_eval_batch_size=8,
 ...     save_steps=1000,
@@ -293,6 +295,8 @@ MInDS-14 データセットのサンプリング レートは 8000kHz です (�
 >>> trainer.push_to_hub()
 ```
 
+</pt>
+</frameworkcontent>
 
 <Tip>
 
@@ -333,6 +337,8 @@ MInDS-14 データセットのサンプリング レートは 8000kHz です (�
 
 必要に応じて、「パイプライン」の結果を手動で複製することもできます。
 
+<frameworkcontent>
+<pt>
 
 プロセッサをロードしてオーディオ ファイルと文字起こしを前処理し、`input`を PyTorch テンソルとして返します。
 
@@ -365,3 +371,5 @@ Pass your inputs to the model and return the logits:
 ['I WOUL LIKE O SET UP JOINT ACOUNT WTH Y PARTNER']
 ```
 
+</pt>
+</frameworkcontent>

@@ -13,7 +13,6 @@ specific language governing permissions and limitations under the License.
 rendered properly in your Markdown viewer.
 
 -->
-*This model was released on 2023-03-09 and added to Hugging Face Transformers on 2024-04-11.*
 
 # Grounding DINO
 
@@ -51,10 +50,9 @@ Here's how to use the model for zero-shot object detection:
 >>> import torch
 >>> from PIL import Image
 >>> from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection
-from accelerate import Accelerator
 
 >>> model_id = "IDEA-Research/grounding-dino-tiny"
->>> device = Accelerator().device
+>>> device = "cuda"
 
 >>> processor = AutoProcessor.from_pretrained(model_id)
 >>> model = AutoModelForZeroShotObjectDetection.from_pretrained(model_id).to(device)
@@ -64,14 +62,14 @@ from accelerate import Accelerator
 >>> # Check for cats and remote controls
 >>> text_labels = [["a cat", "a remote control"]]
 
->>> inputs = processor(images=image, text=text_labels, return_tensors="pt").to(model.device)
+>>> inputs = processor(images=image, text=text_labels, return_tensors="pt").to(device)
 >>> with torch.no_grad():
 ...     outputs = model(**inputs)
 
 >>> results = processor.post_process_grounded_object_detection(
 ...     outputs,
 ...     inputs.input_ids,
-...     threshold=0.4,
+...     box_threshold=0.4,
 ...     text_threshold=0.3,
 ...     target_sizes=[image.size[::-1]]
 ... )
@@ -114,7 +112,6 @@ A list of official Hugging Face and community (indicated by 🌎) resources to h
 ## GroundingDinoProcessor
 
 [[autodoc]] GroundingDinoProcessor
-    - __call__
     - post_process_grounded_object_detection
 
 ## GroundingDinoConfig

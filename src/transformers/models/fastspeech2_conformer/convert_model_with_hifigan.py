@@ -1,3 +1,4 @@
+# coding=utf-8
 # Copyright 2023 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -62,7 +63,7 @@ def convert_FastSpeech2ConformerWithHifiGan_checkpoint(
     load_weights(espnet_checkpoint, vocoder, vocoder_config)
 
     # Prepare the model + vocoder
-    config = FastSpeech2ConformerWithHifiGanConfig(model_config, vocoder_config)
+    config = FastSpeech2ConformerWithHifiGanConfig.from_sub_model_configs(model_config, vocoder_config)
     with_hifigan_model = FastSpeech2ConformerWithHifiGan(config)
     with_hifigan_model.model = model
     with_hifigan_model.vocoder = vocoder
@@ -88,7 +89,7 @@ if __name__ == "__main__":
         help="Path to the output `FastSpeech2ConformerModel` PyTorch model.",
     )
     parser.add_argument(
-        "--push_to_hub", default=None, type=str, help="Where to upload the converted model on the Hugging Face hub."
+        "--push_to_hub", default=None, type=str, help="Where to upload the converted model on the 🤗 hub."
     )
 
     args = parser.parse_args()

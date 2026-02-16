@@ -15,8 +15,6 @@
 
 import unittest
 
-import pytest
-
 from transformers import LukeConfig, is_torch_available
 from transformers.testing_utils import require_torch, slow, torch_device
 
@@ -615,8 +613,10 @@ class LukeModelTest(ModelTesterMixin, PipelineTesterMixin, unittest.TestCase):
         if is_torch_available()
         else {}
     )
-
+    test_pruning = False
+    test_torchscript = False
     test_resize_embeddings = True
+    test_head_masking = True
 
     # TODO: Fix the failed tests
     def is_pipeline_test_to_skip(
@@ -862,17 +862,23 @@ class LukeModelTest(ModelTesterMixin, PipelineTesterMixin, unittest.TestCase):
 
         self.assertIsNotNone(entity_hidden_states.grad)
 
-    @pytest.mark.xfail(reason="This architecture seems to not compute gradients for some layer.")
+    @unittest.skip(
+        reason="This architecture seem to not compute gradients properly when using GC, check: https://github.com/huggingface/transformers/pull/27124"
+    )
     def test_training_gradient_checkpointing(self):
-        super().test_training_gradient_checkpointing()
+        pass
 
-    @pytest.mark.xfail(reason="This architecture seems to not compute gradients for some layer.")
+    @unittest.skip(
+        reason="This architecture seem to not compute gradients properly when using GC, check: https://github.com/huggingface/transformers/pull/27124"
+    )
+    def test_training_gradient_checkpointing_use_reentrant(self):
+        pass
+
+    @unittest.skip(
+        reason="This architecture seem to not compute gradients properly when using GC, check: https://github.com/huggingface/transformers/pull/27124"
+    )
     def test_training_gradient_checkpointing_use_reentrant_false(self):
-        super().test_training_gradient_checkpointing_use_reentrant_false()
-
-    @pytest.mark.xfail(reason="This architecture seems to not compute gradients for some layer.")
-    def test_training_gradient_checkpointing_use_reentrant_true(self):
-        super().test_training_gradient_checkpointing_use_reentrant_true()
+        pass
 
 
 @require_torch

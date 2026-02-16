@@ -19,7 +19,6 @@ from io import BytesIO
 from urllib.request import urlopen
 
 import librosa
-import pytest
 
 from transformers import (
     AutoProcessor,
@@ -30,6 +29,7 @@ from transformers import (
 from transformers.testing_utils import (
     cleanup,
     require_torch,
+    require_torch_sdpa,
     slow,
     torch_device,
 )
@@ -37,7 +37,6 @@ from transformers.testing_utils import (
 from ...generation.test_utils import GenerationTesterMixin
 from ...test_configuration_common import ConfigTester
 from ...test_modeling_common import ModelTesterMixin, floats_tensor, ids_tensor
-from ...test_pipeline_mixin import PipelineTesterMixin
 
 
 if is_torch_available():
@@ -64,7 +63,6 @@ class Qwen2AudioModelTester:
             "use_labels": True,
             "use_mrope": False,
             "vocab_size": 99,
-            "pad_token_id": 1,  # can't be the same as the audio token id
         },
         is_training=True,
         audio_config={
@@ -135,15 +133,14 @@ class Qwen2AudioModelTester:
 
 
 @require_torch
-class Qwen2AudioForConditionalGenerationModelTest(
-    ModelTesterMixin, GenerationTesterMixin, PipelineTesterMixin, unittest.TestCase
-):
+class Qwen2AudioForConditionalGenerationModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase):
     """
     Model tester for `Qwen2AudioForConditionalGeneration`.
     """
 
     all_model_classes = (Qwen2AudioForConditionalGeneration,) if is_torch_available() else ()
-    pipeline_model_mapping = {"any-to-any": Qwen2AudioForConditionalGeneration} if is_torch_available() else {}
+    test_pruning = False
+    test_head_masking = False
     _is_composite = True
 
     def setUp(self):
@@ -151,7 +148,6 @@ class Qwen2AudioForConditionalGenerationModelTest(
         self.config_tester = ConfigTester(self, config_class=Qwen2AudioConfig, has_text_modality=False)
 
     @unittest.skip(reason="Compile not yet supported because in Qwen2Audio models")
-    @pytest.mark.torch_compile_test
     def test_sdpa_can_compile_dynamic(self):
         pass
 
@@ -159,10 +155,11 @@ class Qwen2AudioForConditionalGenerationModelTest(
     def test_sdpa_can_dispatch_on_flash(self):
         pass
 
-    @unittest.skip(reason="Qwen2Audio has no separate base model without a head.")
-    def test_model_base_model_prefix(self):
+    @unittest.skip(reason="Qwen2 Audio does not support right padding.")
+    def test_flash_attn_2_inference_equivalence_right_padding(self):
         pass
 
+    @require_torch_sdpa
     def test_sdpa_can_dispatch_composite_models(self):
         # overwrite because Qwen2 is audio+text model (not vision+text)
         if not self.has_attentions:
@@ -204,7 +201,6 @@ class Qwen2AudioForConditionalGenerationModelTest(
 @require_torch
 class Qwen2AudioForConditionalGenerationIntegrationTest(unittest.TestCase):
     def setUp(self):
-        cleanup(torch_device, gc_collect=True)
         self.processor = AutoProcessor.from_pretrained("Qwen/Qwen2-Audio-7B-Instruct")
 
     def tearDown(self):
@@ -213,11 +209,9 @@ class Qwen2AudioForConditionalGenerationIntegrationTest(unittest.TestCase):
     @slow
     def test_small_model_integration_test_single(self):
         # Let' s make sure we test the preprocessing to replace what is used
-        model = Qwen2AudioForConditionalGeneration.from_pretrained(
-            "Qwen/Qwen2-Audio-7B-Instruct", device_map=torch_device, dtype=torch.float16
-        )
+        model = Qwen2AudioForConditionalGeneration.from_pretrained("Qwen/Qwen2-Audio-7B-Instruct")
 
-        url = "https://huggingface.co/datasets/raushan-testing-hf/audio-test/resolve/main/glass-breaking-151256.mp3"
+        url = "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen2-Audio/audio/glass-breaking-151256.mp3"
         messages = [
             {
                 "role": "user",
@@ -232,35 +226,47 @@ class Qwen2AudioForConditionalGenerationIntegrationTest(unittest.TestCase):
 
         formatted_prompt = self.processor.apply_chat_template(messages, add_generation_prompt=True)
 
-        inputs = self.processor(text=formatted_prompt, audio=[raw_audio], return_tensors="pt", padding=True).to(
-            torch_device
-        )
+        inputs = self.processor(text=formatted_prompt, audios=[raw_audio], return_tensors="pt", padding=True)
 
-        torch.manual_seed(42)
         output = model.generate(**inputs, max_new_tokens=32)
 
         # fmt: off
-        EXPECTED_INPUT_IDS = torch.tensor(
-            [[151644, 8948, 198, 2610, 525, 264, 10950, 17847, 13, 151645, 198, 151644, 872, 198, 14755, 220, 16, 25, 220, 151647, *[151646] * 101 , 151648, 198, 3838, 594, 429, 5112, 30, 151645, 198, 151644, 77091, 198]],
-            device=torch_device
-        )
+        EXPECTED_INPUT_IDS = torch.tensor([[
+            151644, 8948, 198, 2610, 525, 264, 10950, 17847, 13, 151645, 198, 151644, 872, 198, 14755, 220, 16, 25, 220, 151647,
+            *[151646] * 101,
+            151648, 198, 3838, 594, 429, 5112, 30, 151645, 198, 151644, 77091, 198,
+        ]])
         # fmt: on
-        torch.testing.assert_close(inputs["input_ids"], EXPECTED_INPUT_IDS)
+        self.assertTrue(torch.equal(inputs["input_ids"], EXPECTED_INPUT_IDS))
 
-        # fmt: off
-        EXPECTED_DECODED_TEXT = "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\nAudio 1: <|audio_bos|>" + "<|AUDIO|>" * 101 + "<|audio_eos|>\nWhat's that sound?<|im_end|>\n<|im_start|>assistant\nIt is the sound of glass breaking.<|im_end|>"
-        # fmt: on
+        EXPECTED_DECODED_TEXT = (
+            "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\nAudio 1: <|audio_bos|>"
+            + "<|AUDIO|>" * 101
+            + "<|audio_eos|>\nWhat's that sound?<|im_end|>\n<|im_start|>assistant\nIt is the sound of glass breaking.<|im_end|>"
+        )
+
         self.assertEqual(
             self.processor.decode(output[0], skip_special_tokens=False),
             EXPECTED_DECODED_TEXT,
         )
 
+        # test the error when incorrect number of audio tokens
+        # fmt: off
+        inputs["input_ids"] = torch.tensor([[
+            151644, 8948, 198, 2610, 525, 264, 10950, 17847, 13, 151645, 198, 151644, 872, 198, 14755, 220, 16, 25, 220, 151647,
+            *[151646] * 200,
+            151648, 198, 3838, 594, 429, 5112, 30, 151645, 198, 151644, 77091, 198,
+        ]])
+        # fmt: on
+        with self.assertRaisesRegex(
+            ValueError, "Audio features and audio tokens do not match: tokens: 200, features 101"
+        ):
+            model.generate(**inputs, max_new_tokens=32)
+
     @slow
     def test_small_model_integration_test_batch(self):
         # Let' s make sure we test the preprocessing to replace what is used
-        model = Qwen2AudioForConditionalGeneration.from_pretrained(
-            "Qwen/Qwen2-Audio-7B-Instruct", device_map=torch_device, dtype=torch.float16
-        )
+        model = Qwen2AudioForConditionalGeneration.from_pretrained("Qwen/Qwen2-Audio-7B-Instruct")
 
         conversation1 = [
             {
@@ -268,7 +274,7 @@ class Qwen2AudioForConditionalGenerationIntegrationTest(unittest.TestCase):
                 "content": [
                     {
                         "type": "audio",
-                        "audio_url": "https://huggingface.co/datasets/raushan-testing-hf/audio-test/resolve/main/glass-breaking-151256.mp3",
+                        "audio_url": "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen2-Audio/audio/glass-breaking-151256.mp3",
                     },
                     {"type": "text", "text": "What's that sound?"},
                 ],
@@ -279,7 +285,7 @@ class Qwen2AudioForConditionalGenerationIntegrationTest(unittest.TestCase):
                 "content": [
                     {
                         "type": "audio",
-                        "audio_url": "https://huggingface.co/datasets/raushan-testing-hf/audio-test/resolve/main/f2641_0_throatclearing.wav",
+                        "audio_url": "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen2-Audio/audio/f2641_0_throatclearing.wav",
                     },
                     {"type": "text", "text": "What can you hear?"},
                 ],
@@ -319,27 +325,23 @@ class Qwen2AudioForConditionalGenerationIntegrationTest(unittest.TestCase):
                                 )[0]
                             )
 
-        inputs = self.processor(text=text, audio=audios, return_tensors="pt", padding=True).to(torch_device)
+        inputs = self.processor(text=text, audios=audios, return_tensors="pt", padding=True)
 
-        torch.manual_seed(42)
         output = model.generate(**inputs, max_new_tokens=32)
 
         EXPECTED_DECODED_TEXT = [
             "system\nYou are a helpful assistant.\nuser\nAudio 1: \nWhat's that sound?\nassistant\nIt is the sound of glass shattering.\nuser\nAudio 2: \nWhat can you hear?\nassistant\ncough and throat clearing.",
             "system\nYou are a helpful assistant.\nuser\nAudio 1: \nWhat does the person say?\nassistant\nThe original content of this audio is: 'Mister Quiller is the apostle of the middle classes and we are glad to welcome his gospel.'",
         ]
-
         self.assertEqual(
             self.processor.batch_decode(output, skip_special_tokens=True),
             EXPECTED_DECODED_TEXT,
         )
 
     @slow
-    def test_small_model_integration_test_multiurn(self):
+    def test_small_model_integration_test_multiturn(self):
         # Let' s make sure we test the preprocessing to replace what is used
-        model = Qwen2AudioForConditionalGeneration.from_pretrained(
-            "Qwen/Qwen2-Audio-7B-Instruct", device_map=torch_device, dtype=torch.float16
-        )
+        model = Qwen2AudioForConditionalGeneration.from_pretrained("Qwen/Qwen2-Audio-7B-Instruct")
 
         messages = [
             {"role": "system", "content": "You are a helpful assistant."},
@@ -348,7 +350,7 @@ class Qwen2AudioForConditionalGenerationIntegrationTest(unittest.TestCase):
                 "content": [
                     {
                         "type": "audio",
-                        "audio_url": "https://huggingface.co/datasets/raushan-testing-hf/audio-test/resolve/main/glass-breaking-151256.mp3",
+                        "audio_url": "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen2-Audio/audio/glass-breaking-151256.mp3",
                     },
                     {"type": "text", "text": "What's that sound?"},
                 ],
@@ -359,7 +361,7 @@ class Qwen2AudioForConditionalGenerationIntegrationTest(unittest.TestCase):
                 "content": [
                     {
                         "type": "audio",
-                        "audio_url": "https://huggingface.co/datasets/raushan-testing-hf/audio-test/resolve/main/f2641_0_throatclearing.wav",
+                        "audio_url": "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen2-Audio/audio/f2641_0_throatclearing.wav",
                     },
                     {"type": "text", "text": "How about this one?"},
                 ],
@@ -380,15 +382,12 @@ class Qwen2AudioForConditionalGenerationIntegrationTest(unittest.TestCase):
                             )[0]
                         )
 
-        inputs = self.processor(text=formatted_prompt, audio=audios, return_tensors="pt", padding=True).to(
-            torch_device
-        )
+        inputs = self.processor(text=formatted_prompt, audios=audios, return_tensors="pt", padding=True)
 
-        torch.manual_seed(42)
         output = model.generate(**inputs, max_new_tokens=32, top_k=1)
 
         EXPECTED_DECODED_TEXT = [
-            "system\nYou are a helpful assistant.\nuser\nAudio 1: \nWhat's that sound?\nassistant\nIt is the sound of glass shattering.\nuser\nAudio 2: \nHow about this one?\nassistant\nThroat clearing."
+            "system\nYou are a helpful assistant.\nuser\nAudio 1: \nWhat's that sound?\nassistant\nIt is the sound of glass shattering.\nuser\nAudio 2: \nHow about this one?\nassistant\nThroat clearing.",
         ]
         self.assertEqual(
             self.processor.batch_decode(output, skip_special_tokens=True),

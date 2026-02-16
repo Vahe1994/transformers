@@ -1,3 +1,4 @@
+# coding=utf-8
 # Copyright 2021 The HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -87,6 +88,8 @@ def recursively_load_weights(fairseq_model, hf_model):
             is_used = True
         else:
             for key, mapped_key in MAPPING.items():
+                mapped_key = mapped_key
+
                 if key in name:
                     is_used = True
                     if "*" in mapped_key:

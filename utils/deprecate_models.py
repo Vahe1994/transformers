@@ -9,8 +9,9 @@ import argparse
 import os
 from collections import defaultdict
 from pathlib import Path
+from typing import Optional
 
-import httpx
+import requests
 from custom_init_isort import sort_imports_in_all_inits
 from git import Repo
 from packaging import version
@@ -28,7 +29,7 @@ logger = logging.get_logger(__name__)
 def get_last_stable_minor_release():
     # Get the last stable release of transformers
     url = "https://pypi.org/pypi/transformers/json"
-    release_data = httpx.get(url).json()
+    release_data = requests.get(url).json()
 
     # Find the last stable release of transformers (version below current version)
     major_version, minor_version, patch_version, _ = current_version.split(".")
@@ -36,7 +37,7 @@ def get_last_stable_minor_release():
     last_stable_minor_releases = [
         release for release in release_data["releases"] if release.startswith(last_major_minor)
     ]
-    last_stable_release = max(last_stable_minor_releases, key=version.parse)
+    last_stable_release = sorted(last_stable_minor_releases, key=version.parse)[-1]
 
     return last_stable_release
 
@@ -76,7 +77,7 @@ def insert_tip_to_model_doc(model_doc_path, tip_message):
         f.write("\n".join(new_model_lines))
 
 
-def get_model_doc_path(model: str) -> tuple[str | None, str | None]:
+def get_model_doc_path(model: str) -> tuple[Optional[str], Optional[str]]:
     # Possible variants of the model name in the model doc path
     model_names = [model, model.replace("_", "-"), model.replace("_", "")]
 
